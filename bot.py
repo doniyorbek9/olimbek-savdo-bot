@@ -2268,10 +2268,13 @@ async def start_chat_with_shop(callback: types.CallbackQuery, state: FSMContext)
     user_name = user["full_name"] if user else str(user_tg)
     await notify_partner_chat_started(shop_tg, user_tg, "Mijoz " + user_name + " (Buyurtma #" + order_uid + ")", "shop_user", order_uid)
 
-@dp.message(ChatState.chatting)
-async def chat_message(message: types.Message, state: FSMContext):
+async def _send_chat_message(message, state):
+    """Umumiy chat xabar yuborish logikasi."""
     tg_id = message.from_user.id
     text = message.text or ""
+
+    if not text:
+        return False
 
     # Tugatish
     if text == "🔴 Chatni tugatish":
@@ -2286,17 +2289,16 @@ async def chat_message(message: types.Message, state: FSMContext):
                 pass
         await state.clear()
         await message.answer("✅ Chat yakunlandi.", reply_markup=main_menu_kb(tg_id))
-        return
+        return True
 
     chat = chat_get_session(tg_id)
     if not chat:
         await state.clear()
         await message.answer("Chat topilmadi.", reply_markup=main_menu_kb(tg_id))
-        return
+        return True
 
     partner = chat["partner"]
 
-    # Kim yozayotganini aniqlash
     role = user_role(tg_id)
     if role == "courier":
         courier = get_courier_by_tg(tg_id)
@@ -2319,7 +2321,7 @@ async def chat_message(message: types.Message, state: FSMContext):
     except Exception as e:
         logger.error("Chat send error: " + str(e))
         await message.answer("❌ Xabar yuborilmadi. Partner botni bloklagan bo'lishi mumkin.")
-        return
+        return True
 
     conn = get_db()
     c = conn.cursor()
@@ -2327,7 +2329,24 @@ async def chat_message(message: types.Message, state: FSMContext):
               (tg_id, partner, text, chat["type"], now_str(), chat.get("order", "")))
     conn.commit()
     conn.close()
+    return False
 
+@dp.message(ChatState.chatting)
+async def chat_message(message, state):
+    await _send_chat_message(message, state)
+
+# Fallback: bot restart bo'lganda FSM state yo'qolgan, lekin active_sessions bor
+@dp.message(F.text & ~F.text.startswith("/"))
+async def fallback_chat_handler(message, state):
+    """Bot restart bo'lganda session bor lekin FSM state yo'qolgan holat."""
+    cur_state = await state.get_state()
+    if cur_state is not None:
+        return  # Boshqa state da — bu handler kerak emas
+    tg_id = message.from_user.id
+    chat = chat_get_session(tg_id)
+    if chat:
+        await state.set_state(ChatState.chatting)
+        await _send_chat_message(message, state)
 @dp.callback_query(F.data == "end_chat")
 async def end_chat(callback: types.CallbackQuery, state: FSMContext):
     tg_id = callback.from_user.id
@@ -3517,6 +3536,11 @@ async def admin_chats(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
+
+    # Umumiy xabarlar sonini tekshirish (debug uchun)
+    c.execute("SELECT COUNT(*) as total FROM chats")
+    total_count = c.fetchone()['total']
+
     # Har bir suhbat juftligini birlashtirish: kichik ID har doim birinchi
     c.execute("""
         SELECT
@@ -3533,7 +3557,11 @@ async def admin_chats(message: types.Message):
     conn.close()
 
     if not chats:
-        await message.answer("💬 Hozircha chatlar yo'q")
+        await message.answer(
+            f"💬 Hozircha chatlar yo'q\n\n"
+            f"📊 Jadvaldagi jami xabarlar: {total_count} ta\n\n"
+            f"ℹ️ Chatlar foydalanuvchilar '💬 Admin' yoki '💬 Do'kon egasi' tugmasini bosib xabar yuborganda bu yerda ko'rinadi."
+        )
         return
 
     kb = InlineKeyboardBuilder()

@@ -350,7 +350,9 @@ def user_main_kb():
     kb.button(text="🏪 Do'konlar")
     kb.button(text="🛒 Savat")
     kb.button(text="👤 Profil")
-    kb.adjust(2, 1)
+    kb.button(text="💬 Do'kon egasi")
+    kb.button(text="💬 Admin")
+    kb.adjust(2, 1, 2)
     return kb.as_markup(resize_keyboard=True)
 
 def shop_main_kb():
@@ -1040,15 +1042,14 @@ async def order_payment(callback: types.CallbackQuery, state: FSMContext):
         shop = c.fetchone()
         conn.close()
 
-        card = shop['card_number'] if shop and shop['card_number'] else "Karta raqami kiritilmagan"
-        # card_number maydonida "RAQAM | ISM" formatida saqlangan
-        if " | " in card:
-            card_num, card_owner = card.split(" | ", 1)
-            card_display = f"<code>{card_num}</code>  |  <b>{card_owner}</b>"
+        card_raw = shop['card_number'] if shop and shop['card_number'] else "Karta raqami kiritilmagan"
+        if " | " in card_raw:
+            card_num, card_owner = card_raw.split(" | ", 1)
+            card_display = card_num + "  |  " + card_owner
         else:
-            card_display = f"<code>{card}</code>"
+            card_display = card_raw
         await callback.message.answer(
-            f"💳 Karta raqami: {card_display}\n\nShu kartaga pul o'tkazing va chek rasmini yuboring:",
+            "💳 Karta raqami: <code>" + card_display + "</code>\n\nShu kartaga pul o'tkazing va chek rasmini yuboring:",
             parse_mode="HTML"
         )
         await state.set_state(OrderState.check_photo)
@@ -1151,10 +1152,9 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
                     await bot.send_message(shop['owner_tg_id'], admin_text, reply_markup=kb.as_markup())
             except Exception as e:
                 logger.error(f"Do'kon egasiga xabar yuborilmadi: {e}")
-                # Adminga ham xabar yuborish
                 for admin_id in ADMIN_IDS:
                     try:
-                        await bot.send_message(admin_id, f"⚠️ Do'kon egasiga ({shop['owner_tg_id']}) xabar yuborilmadi!\nBuyurtma #{order_uid}\nXato: {e}")
+                        await bot.send_message(admin_id, "⚠️ Do'kon egasiga xabar yuborilmadi!\nBuyurtma #" + str(order_uid))
                     except:
                         pass
 
@@ -2249,40 +2249,74 @@ async def start_chat_with_shop(callback: types.CallbackQuery, state: FSMContext)
         return
 
     user_tg = callback.from_user.id
-    shop_tg = shop['owner_tg_id']
+    shop_tg = shop["owner_tg_id"]
+    shop_name = shop["name"]
 
     chat_set(user_tg, shop_tg, "user_shop", order_uid)
     chat_set(shop_tg, user_tg, "shop_user", order_uid)
 
     await state.set_state(ChatState.chatting)
-    await callback.message.answer(f"💬 {shop['name']} bilan chat boshlandi. Yozing:")
-
+    await callback.message.answer(
+        "💬 " + shop_name + " egasi bilan chat boshlandi (Buyurtma #" + order_uid + ").\nYozing. Tugatish uchun pastdagi tugmani bosing:",
+        reply_markup=chat_end_kb()
+    )
     user = get_user(user_tg)
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Tugatish", callback_data="end_chat")
-    await bot.send_message(shop_tg,
-                           f"💬 Mijoz {user['full_name'] if user else 'Noma\'lum'} murojaat qildi (#{order_uid}):",
-                           reply_markup=kb.as_markup())
+    user_name = user["full_name"] if user else str(user_tg)
+    await notify_partner_chat_started(shop_tg, "Mijoz " + user_name + " (Buyurtma #" + order_uid + ")", "shop_user", order_uid)
 
 @dp.message(ChatState.chatting)
 async def chat_message(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
-    chat = chat_get_session(tg_id)
+    text = message.text or ""
 
-    if not chat:
+    # Tugatish
+    if text == "🔴 Chatni tugatish":
+        chat = chat_get_session(tg_id)
+        if chat:
+            partner = chat["partner"]
+            chat_remove(tg_id)
+            chat_remove(partner)
+            try:
+                await bot.send_message(partner, "🔴 Chat yakunlandi.", reply_markup=main_menu_kb(partner))
+            except:
+                pass
         await state.clear()
+        await message.answer("✅ Chat yakunlandi.", reply_markup=main_menu_kb(tg_id))
         return
 
-    partner = chat['partner']
+    chat = chat_get_session(tg_id)
+    if not chat:
+        await state.clear()
+        await message.answer("Chat topilmadi.", reply_markup=main_menu_kb(tg_id))
+        return
+
+    partner = chat["partner"]
+
+    # Kim yozayotganini aniqlash
+    role = user_role(tg_id)
+    if role == "courier":
+        courier = get_courier_by_tg(tg_id)
+        sender_name = "🚚 Kuryer " + (courier["full_name"] if courier else str(tg_id))
+    elif role == "shop":
+        shop = get_shop_by_owner(tg_id)
+        sender_name = "🏪 " + (shop["name"] if shop else "Do'kon egasi")
+    elif role == "admin":
+        sender_name = "👨‍💼 Admin"
+    else:
+        user = get_user(tg_id)
+        sender_name = "👤 " + (user["full_name"] if user else "Mijoz")
+
     try:
-        await bot.send_message(partner, f"💬 {message.text}")
-    except:
-        await message.answer("❌ Xabar yuborilmadi")
+        await bot.send_message(partner, "💬 " + sender_name + ":\n" + text)
+    except Exception as e:
+        logger.error("Chat send error: " + str(e))
+        await message.answer("❌ Xabar yuborilmadi. Partner botni bloklagan bo'lishi mumkin.")
+        return
 
     conn = get_db()
     c = conn.cursor()
     c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
-              (tg_id, partner, message.text, chat['type'], now_str(), chat.get('order', '')))
+              (tg_id, partner, text, chat["type"], now_str(), chat.get("order", "")))
     conn.commit()
     conn.close()
 
@@ -2290,66 +2324,134 @@ async def chat_message(message: types.Message, state: FSMContext):
 async def end_chat(callback: types.CallbackQuery, state: FSMContext):
     tg_id = callback.from_user.id
     chat = chat_get_session(tg_id)
-
     if chat:
-        partner = chat['partner']
+        partner = chat["partner"]
         chat_remove(tg_id)
         chat_remove(partner)
         try:
-            await bot.send_message(partner, "✅ Chat yakunlandi")
+            await bot.send_message(partner, "🔴 Chat yakunlandi.", reply_markup=main_menu_kb(partner))
         except:
             pass
-
     await state.clear()
-    await callback.message.answer("✅ Chat yakunlandi", reply_markup=main_menu_kb(tg_id))
+    await callback.message.answer("✅ Chat yakunlandi.", reply_markup=main_menu_kb(tg_id))
 
-# --- COURIER CHAT ---
-@dp.message(F.text == "💬 Do'kon egasi")
-async def courier_chat_shop(message: types.Message, state: FSMContext):
-    courier = get_courier_by_tg(message.from_user.id)
-    if not courier:
-        return
+# --- CHAT TIZIMI (Mijoz, Kuryer, Do'kon egasi, Admin) ---
 
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT owner_tg_id FROM shops WHERE id=%s", (courier['shop_id'],))
-    shop = c.fetchone()
-    conn.close()
+def chat_end_kb():
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="🔴 Chatni tugatish")
+    return kb.as_markup(resize_keyboard=True, one_time_keyboard=False)
 
-    if not shop:
-        await message.answer("Do'kon topilmadi")
-        return
-
-    tg_id = message.from_user.id
-    shop_tg = shop['owner_tg_id']
-
-    chat_set(tg_id, shop_tg, "courier_shop", "")
-    chat_set(shop_tg, tg_id, "shop_courier", "")
-
-    await state.set_state(ChatState.chatting)
-    await message.answer("💬 Do'kon egasi bilan chat. Yozing:")
-
+async def notify_partner_chat_started(partner_tg_id, from_label, chat_type, order_uid=""):
+    order_info = (" (Buyurtma #" + order_uid + ")") if order_uid else ""
     kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Tugatish", callback_data="end_chat")
-    await bot.send_message(shop_tg, f"💬 Kuryer murojaat qildi:", reply_markup=kb.as_markup())
+    kb.button(text="💬 Javob berish", callback_data="reply_chat:" + str(partner_tg_id) + ":" + chat_type)
+    msg = "💬 " + from_label + " siz bilan gaplashmoqchi" + order_info + ".\n\nJavob berish uchun tugmani bosing:"
+    try:
+        await bot.send_message(partner_tg_id, msg, reply_markup=kb.as_markup())
+    except Exception as e:
+        logger.error("Chat notify error: " + str(e))
+
+@dp.callback_query(F.data.startswith("reply_chat:"))
+async def reply_chat_start(callback: types.CallbackQuery, state: FSMContext):
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.answer("Xato")
+        return
+    try:
+        partner_tg_id = int(parts[1])
+        chat_type = parts[2]
+    except ValueError:
+        await callback.answer("Xato ID")
+        return
+    tg_id = callback.from_user.id
+    chat_set(tg_id, partner_tg_id, chat_type, "")
+    chat_set(partner_tg_id, tg_id, chat_type, "")
+    await state.set_state(ChatState.chatting)
+    await callback.message.answer(
+        "💬 Chat ochildi! Yozing.\nTugatish uchun pastdagi tugmani bosing:",
+        reply_markup=chat_end_kb()
+    )
+    await callback.answer()
+    try:
+        await bot.send_message(partner_tg_id, "💬 Javob keldi! Endi yozishingiz mumkin.")
+    except:
+        pass
+
+@dp.message(F.text == "💬 Do'kon egasi")
+async def user_or_courier_chat_shop(message: types.Message, state: FSMContext):
+    tg_id = message.from_user.id
+    role = user_role(tg_id)
+
+    if role == "courier":
+        courier = get_courier_by_tg(tg_id)
+        if not courier:
+            return
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT owner_tg_id, name FROM shops WHERE id=%s", (courier["shop_id"],))
+        shop = c.fetchone()
+        conn.close()
+        if not shop:
+            await message.answer("Do'kon topilmadi")
+            return
+        shop_tg = shop["owner_tg_id"]
+        shop_name = shop["name"]
+        chat_set(tg_id, shop_tg, "courier_shop", "")
+        chat_set(shop_tg, tg_id, "shop_courier", "")
+        await state.set_state(ChatState.chatting)
+        await message.answer("💬 " + shop_name + " egasi bilan chat boshlandi.\nYozing. Tugatish uchun pastdagi tugmani bosing:", reply_markup=chat_end_kb())
+        courier_obj = get_courier_by_tg(tg_id)
+        label = "Kuryer " + (courier_obj["full_name"] if courier_obj else str(tg_id))
+        await notify_partner_chat_started(shop_tg, label, "shop_courier")
+
+    else:
+        # Oddiy mijoz - oxirgi buyurtmasining do'kon egasi
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT shop_id FROM orders WHERE user_tg_id=%s ORDER BY created_at DESC LIMIT 1", (tg_id,))
+        last_order = c.fetchone()
+        if not last_order:
+            await message.answer("❌ Hali buyurtma yo'q. Buyurtma bergandan keyin do'kon egasi bilan gaplashish mumkin.")
+            conn.close()
+            return
+        c.execute("SELECT owner_tg_id, name FROM shops WHERE id=%s", (last_order["shop_id"],))
+        shop = c.fetchone()
+        conn.close()
+        if not shop:
+            await message.answer("Do'kon topilmadi")
+            return
+        shop_tg = shop["owner_tg_id"]
+        shop_name = shop["name"]
+        chat_set(tg_id, shop_tg, "user_shop", "")
+        chat_set(shop_tg, tg_id, "shop_user", "")
+        await state.set_state(ChatState.chatting)
+        user = get_user(tg_id)
+        await message.answer("💬 " + shop_name + " egasi bilan chat boshlandi.\nYozing. Tugatish uchun pastdagi tugmani bosing:", reply_markup=chat_end_kb())
+        label = "Mijoz " + (user["full_name"] if user else str(tg_id))
+        await notify_partner_chat_started(shop_tg, label, "shop_user")
 
 @dp.message(F.text == "💬 Admin")
-async def courier_chat_admin(message: types.Message, state: FSMContext):
+async def user_or_courier_chat_admin(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
     admin_id = ADMIN_IDS[0]
+    role = user_role(tg_id)
 
-    chat_set(tg_id, admin_id, "courier_admin", "")
-    chat_set(admin_id, tg_id, "admin_courier", "")
-
+    chat_set(tg_id, admin_id, "user_admin", "")
+    chat_set(admin_id, tg_id, "admin_user", "")
     await state.set_state(ChatState.chatting)
-    await message.answer("💬 Admin bilan chat. Yozing:")
+    await message.answer("💬 Admin bilan chat boshlandi.\nYozing. Tugatish uchun pastdagi tugmani bosing:", reply_markup=chat_end_kb())
 
-    courier = get_courier_by_tg(tg_id)
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Tugatish", callback_data="end_chat")
-    await bot.send_message(admin_id,
-                           f"💬 Kuryer {courier['full_name'] if courier else tg_id} murojaat qildi:",
-                           reply_markup=kb.as_markup())
+    if role == "courier":
+        courier = get_courier_by_tg(tg_id)
+        label = "Kuryer " + (courier["full_name"] if courier else str(tg_id))
+    elif role == "shop":
+        shop = get_shop_by_owner(tg_id)
+        label = "Do'kon egasi " + (shop["name"] if shop else str(tg_id))
+    else:
+        user = get_user(tg_id)
+        label = "Mijoz " + (user["full_name"] if user else str(tg_id))
+    await notify_partner_chat_started(admin_id, label, "admin_user")
 
 # ===================== ADMIN PANEL =====================
 

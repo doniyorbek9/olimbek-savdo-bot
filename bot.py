@@ -3340,19 +3340,23 @@ async def full_order_detail(callback: types.CallbackQuery):
     )
 
     del_kb = InlineKeyboardBuilder()
-    del_kb.button(text="Buyurtmani ochirish", callback_data="del_order_" + str(o["order_uid"]))
+    del_kb.button(text="🗑️ Buyurtmani o'chirish", callback_data="del_order_" + str(o["order_uid"]))
     del_kb.adjust(1)
 
-    await callback.message.answer(text, reply_markup=del_kb.as_markup())
-
+    # Chek rasm mavjud bo'lsa — ma'lumotlarni caption ga, rasmi birinchi
     if o["check_photo"]:
         try:
             await callback.message.answer_photo(
                 o["check_photo"],
-                caption="Chek #" + str(o["order_uid"])
+                caption=text[:1024],  # Telegram caption limit 1024 belgi
+                reply_markup=del_kb.as_markup()
             )
         except Exception as e:
+            # Rasm yuklanmasa oddiy text yuborish
+            await callback.message.answer(text, reply_markup=del_kb.as_markup())
             await callback.message.answer("Chek yuklanmadi: " + str(e))
+    else:
+        await callback.message.answer(text, reply_markup=del_kb.as_markup())
 
 
 @dp.callback_query(F.data.startswith("del_order_") & ~F.data.startswith("del_order_yes_") & ~F.data.startswith("del_order_cancel"))

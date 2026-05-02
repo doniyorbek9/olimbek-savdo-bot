@@ -3227,60 +3227,39 @@ async def admin_full_orders(message: types.Message):
     if not is_admin(message.from_user.id):
         return
 
-    kb = InlineKeyboardBuilder()
-    kb.button(text="⏳ Kutilmoqda",   callback_data="full_orders_pending")
-    kb.button(text="✅ Tasdiqlangan", callback_data="full_orders_confirmed")
-    kb.button(text="🚗 Yo'lda",      callback_data="full_orders_on_way")
-    kb.button(text="✅ Yetkazildi",   callback_data="full_orders_delivered")
-    kb.button(text="❌ Rad etildi",   callback_data="full_orders_rejected")
-    kb.button(text="📋 Barchasi",     callback_data="full_orders_all")
-    kb.adjust(2)
-    await message.answer("📦 Buyurtmalar — filtr tanlang:", reply_markup=kb.as_markup())
-
-
-@dp.callback_query(F.data.startswith("full_orders_"))
-async def full_orders_list(callback: types.CallbackQuery):
-    await callback.answer()
-    status = callback.data.split("_", 2)[2]  # pending / confirmed / on_way / delivered / rejected / all
-
     conn = get_db()
     c = conn.cursor()
-    if status == "all":
-        c.execute("""
-            SELECT o.*, s.name as shop_name, s.owner_tg_id
-            FROM orders o
-            LEFT JOIN shops s ON o.shop_id = s.id
-            ORDER BY o.created_at DESC LIMIT 50
-        """)
-    else:
-        c.execute("""
-            SELECT o.*, s.name as shop_name, s.owner_tg_id
-            FROM orders o
-            LEFT JOIN shops s ON o.shop_id = s.id
-            WHERE o.status = %s
-            ORDER BY o.created_at DESC LIMIT 50
-        """, (status,))
+    c.execute("""
+        SELECT o.*, s.name as shop_name,
+               u.full_name as user_name
+        FROM orders o
+        LEFT JOIN shops s ON o.shop_id = s.id
+        LEFT JOIN users u ON o.user_tg_id = u.tg_id
+        ORDER BY o.created_at DESC LIMIT 50
+    """)
     orders = c.fetchall()
     conn.close()
 
     if not orders:
-        await callback.message.answer("📦 Bu filtrdа buyurtmalar yo'q")
+        await message.answer("📦 Hozircha buyurtmalar yo'q")
         return
 
     status_emoji = {
-        "pending": "⏳", "confirmed": "✅", "on_way": "🚗",
-        "delivered": "✅", "rejected": "❌"
+        "pending": "⏳", "confirmed": "✅",
+        "on_way": "🚗", "delivered": "✅", "rejected": "❌"
     }
 
     kb = InlineKeyboardBuilder()
     for o in orders:
         emoji = status_emoji.get(o["status"], "❓")
-        shop_name = o["shop_name"] or "?"
-        label = f"{emoji} #{o['order_uid']} | {shop_name} | {o['created_at']}"
-        kb.button(text=label[:60], callback_data=f"forder_{o['order_uid']}")
+        shop = o["shop_name"] or "?"
+        user_n = o["user_name"] or "Noma'lum"
+        # Ko'rinish: emoji Ism | Do'kon nomi | #ID
+        label = f"{emoji} {user_n} | {shop} | #{o['order_uid']}"
+        kb.button(text=label[:64], callback_data="forder_" + str(o["order_uid"]))
     kb.adjust(1)
-    await callback.message.answer(
-        f"📦 {len(orders)} ta buyurtma (oxirgi 50):",
+    await message.answer(
+        f"📦 Oxirgi {len(orders)} ta buyurtma:",
         reply_markup=kb.as_markup()
     )
 

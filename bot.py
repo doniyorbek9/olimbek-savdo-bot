@@ -3517,39 +3517,79 @@ async def admin_chats(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT DISTINCT from_tg_id, to_tg_id, chat_type, MAX(created_at) as last FROM chats GROUP BY from_tg_id, to_tg_id ORDER BY last DESC LIMIT 20")
+    # Har bir suhbat juftligini birlashtirish: kichik ID har doim birinchi
+    c.execute("""
+        SELECT
+            LEAST(from_tg_id, to_tg_id) as user1,
+            GREATEST(from_tg_id, to_tg_id) as user2,
+            MAX(chat_type) as chat_type,
+            MAX(created_at) as last_msg
+        FROM chats
+        GROUP BY LEAST(from_tg_id, to_tg_id), GREATEST(from_tg_id, to_tg_id)
+        ORDER BY last_msg DESC
+        LIMIT 20
+    """)
     chats = c.fetchall()
     conn.close()
 
     if not chats:
-        await message.answer("💬 Chatlar yo'q")
+        await message.answer("💬 Hozircha chatlar yo'q")
         return
 
     kb = InlineKeyboardBuilder()
     for ch in chats:
-        kb.button(text=f"💬 {ch['from_tg_id']} → {ch['to_tg_id']} ({ch['chat_type']}) {ch['last']}",
-                  callback_data=f"view_chat_{ch['from_tg_id']}_{ch['to_tg_id']}")
+        label = f"💬 {ch['user1']} ↔ {ch['user2']} | {ch['chat_type']} | {ch['last_msg']}"
+        # callback_data: view_chat_{user1}_{user2}
+        cb_data = f"vchat_{ch['user1']}_{ch['user2']}"
+        kb.button(text=label[:60], callback_data=cb_data)
     kb.adjust(1)
-    await message.answer("💬 Chatlar:", reply_markup=kb.as_markup())
+    await message.answer("💬 Barcha chatlar:", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("view_chat_"))
+@dp.callback_query(F.data.startswith("vchat_"))
 async def view_chat_detail(callback: types.CallbackQuery):
+    await callback.answer()
     parts = callback.data.split("_")
-    from_id = int(parts[2])
-    to_id = int(parts[3])
+    # vchat_{user1}_{user2}
+    if len(parts) < 3:
+        await callback.message.answer("❌ Xato ma'lumot")
+        return
+
+    try:
+        user1 = int(parts[1])
+        user2 = int(parts[2])
+    except (ValueError, IndexError):
+        await callback.message.answer("❌ ID ni o'qib bo'lmadi")
+        return
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM chats WHERE (from_tg_id=%s AND to_tg_id=%s) OR (from_tg_id=%s AND to_tg_id=%s) ORDER BY created_at ASC LIMIT 30",
-              (from_id, to_id, to_id, from_id))
-    messages = c.fetchall()
+    c.execute("""
+        SELECT from_tg_id, to_tg_id, message, chat_type, created_at
+        FROM chats
+        WHERE (from_tg_id=%s AND to_tg_id=%s)
+           OR (from_tg_id=%s AND to_tg_id=%s)
+        ORDER BY created_at ASC
+        LIMIT 50
+    """, (user1, user2, user2, user1))
+    msgs = c.fetchall()
     conn.close()
 
-    text = f"💬 Chat:\n\n"
-    for m in messages:
-        text += f"[{m['created_at']}] {m['from_tg_id']}: {m['message']}\n"
+    if not msgs:
+        await callback.message.answer("💬 Bu chatda xabarlar yo'q")
+        return
 
-    await callback.message.answer(text[:4000])
+    text = f"💬 Chat: {user1} ↔ {user2}\n{'─'*30}\n"
+    for m in msgs:
+        sender = "👤" if m['from_tg_id'] == user1 else "👥"
+        text += f"{sender} [{m['created_at']}]\n{m['message']}\n\n"
+
+    # Telegram 4096 belgidan uzun xabar qabul qilmaydi
+    if len(text) > 4000:
+        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        for chunk in chunks:
+            await callback.message.answer(chunk)
+    else:
+        await callback.message.answer(text)
 
 # --- BLOCKED LIST ---
 @dp.message(F.text == "🚫 Bloklangan")

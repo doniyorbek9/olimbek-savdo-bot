@@ -36,7 +36,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from PIL import Image, ImageDraw, ImageFont
 
 # ===================== CONFIG =====================
-BOT_TOKEN = "8701112288:AAGsxAQybhVu6THztkrxEdMxU2ZfZZefA5s"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_IDS = [7948989650]
 DB_PATH = "olimbek_savdo.db"
 

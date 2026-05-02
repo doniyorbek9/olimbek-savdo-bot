@@ -1121,11 +1121,15 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
             receipt_buf = generate_receipt(order_row, dict(user), dict(shop) if shop else {})
             await message.answer_photo(
                 types.BufferedInputFile(receipt_buf.read(), filename="chek.png"),
-                caption=f"✅ Buyurtmangiz qabul qilindi!\n📦 ID: #{order_uid}"
+                caption=f"✅ Buyurtmangiz qabul qilindi!\n📦 ID: #{order_uid}",
+                reply_markup=user_main_kb()
             )
         except Exception as e:
             logger.error(f"Receipt xatosi: {e}")
-            await message.answer(f"✅ Buyurtmangiz qabul qilindi!\n📦 ID: #{order_uid}")
+            await message.answer(
+                f"✅ Buyurtmangiz qabul qilindi!\n📦 ID: #{order_uid}",
+                reply_markup=user_main_kb()
+            )
 
         # Do'kon egasiga yuborish
         if shop:

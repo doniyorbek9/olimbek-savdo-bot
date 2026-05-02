@@ -396,6 +396,7 @@ def admin_main_kb():
     kb.button(text="💬 Chatlar")
     kb.button(text="🚫 Bloklangan")
     kb.button(text="📈 Haftalik hisobot")
+    kb.button(text="📦 Buyurtmalar (to'liq)")
     kb.button(text="🗑️ Bot ma'lumotlari")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
@@ -3218,6 +3219,155 @@ async def orders_by_status(callback: types.CallbackQuery):
         kb.button(text=f"#{o['order_uid']} — {o['created_at']}", callback_data=f"admin_order_{o['order_uid']}")
     kb.adjust(1)
     await callback.message.answer(f"📋 {len(orders)} ta buyurtma:", reply_markup=kb.as_markup())
+
+
+# --- FULL ORDERS LIST ---
+@dp.message(F.text == "📦 Buyurtmalar (to'liq)")
+async def admin_full_orders(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="⏳ Kutilmoqda",   callback_data="full_orders_pending")
+    kb.button(text="✅ Tasdiqlangan", callback_data="full_orders_confirmed")
+    kb.button(text="🚗 Yo'lda",      callback_data="full_orders_on_way")
+    kb.button(text="✅ Yetkazildi",   callback_data="full_orders_delivered")
+    kb.button(text="❌ Rad etildi",   callback_data="full_orders_rejected")
+    kb.button(text="📋 Barchasi",     callback_data="full_orders_all")
+    kb.adjust(2)
+    await message.answer("📦 Buyurtmalar — filtr tanlang:", reply_markup=kb.as_markup())
+
+
+@dp.callback_query(F.data.startswith("full_orders_"))
+async def full_orders_list(callback: types.CallbackQuery):
+    await callback.answer()
+    status = callback.data.split("_", 2)[2]  # pending / confirmed / on_way / delivered / rejected / all
+
+    conn = get_db()
+    c = conn.cursor()
+    if status == "all":
+        c.execute("""
+            SELECT o.*, s.name as shop_name, s.owner_tg_id
+            FROM orders o
+            LEFT JOIN shops s ON o.shop_id = s.id
+            ORDER BY o.created_at DESC LIMIT 50
+        """)
+    else:
+        c.execute("""
+            SELECT o.*, s.name as shop_name, s.owner_tg_id
+            FROM orders o
+            LEFT JOIN shops s ON o.shop_id = s.id
+            WHERE o.status = %s
+            ORDER BY o.created_at DESC LIMIT 50
+        """, (status,))
+    orders = c.fetchall()
+    conn.close()
+
+    if not orders:
+        await callback.message.answer("📦 Bu filtrdа buyurtmalar yo'q")
+        return
+
+    status_emoji = {
+        "pending": "⏳", "confirmed": "✅", "on_way": "🚗",
+        "delivered": "✅", "rejected": "❌"
+    }
+
+    kb = InlineKeyboardBuilder()
+    for o in orders:
+        emoji = status_emoji.get(o["status"], "❓")
+        shop_name = o["shop_name"] or "?"
+        label = f"{emoji} #{o['order_uid']} | {shop_name} | {o['created_at']}"
+        kb.button(text=label[:60], callback_data=f"forder_{o['order_uid']}")
+    kb.adjust(1)
+    await callback.message.answer(
+        f"📦 {len(orders)} ta buyurtma (oxirgi 50):",
+        reply_markup=kb.as_markup()
+    )
+
+
+@dp.callback_query(F.data.startswith("forder_"))
+async def full_order_detail(callback: types.CallbackQuery):
+    await callback.answer()
+    order_uid = callback.data[7:]
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT o.*, s.name as shop_name, s.card_number, s.phone as shop_phone
+        FROM orders o
+        LEFT JOIN shops s ON o.shop_id = s.id
+        WHERE o.order_uid = %s
+    """, (order_uid,))
+    o = c.fetchone()
+
+    if not o:
+        await callback.message.answer("\u274c Buyurtma topilmadi")
+        conn.close()
+        return
+
+    c.execute("SELECT * FROM users WHERE tg_id = %s", (o["user_tg_id"],))
+    user = c.fetchone()
+
+    courier = None
+    if o["courier_tg_id"]:
+        c.execute("SELECT * FROM couriers WHERE tg_id = %s", (o["courier_tg_id"],))
+        courier = c.fetchone()
+    conn.close()
+
+    status_map = {
+        "pending":   "\u23f3 Kutilmoqda",
+        "confirmed": "\u2705 Tasdiqlandi",
+        "on_way":    "\U0001f697 Yo'lda",
+        "delivered": "\u2705 Yetkazildi",
+        "rejected":  "\u274c Rad etildi"
+    }
+
+    if user:
+        mijoz = user["full_name"] + " | \U0001f4f1 " + str(user["phone"]) + " | TG: " + str(o["user_tg_id"])
+    else:
+        mijoz = "Tel buyurtma | TG: " + str(o["user_tg_id"])
+
+    if courier:
+        kuryer = courier["full_name"] + " | \U0001f4f1 " + str(courier["phone"]) + " | TG: " + str(o["courier_tg_id"])
+    elif o["courier_tg_id"]:
+        kuryer = "TG: " + str(o["courier_tg_id"])
+    else:
+        kuryer = "Tayinlanmagan"
+
+    promo_text = ""
+    if o["promo_code"]:
+        promo_text = "\U0001f39f\ufe0f Promo: " + str(o["promo_code"]) + " (-" + f"{o['discount']:,.0f}" + " so'm)\n"
+
+    products_fmt = o["products"].replace("|", "\n  \u2022 ")
+
+    text = (
+        "\U0001f4e6 BUYURTMA #" + str(o["order_uid"]) + "\n"
+        + "\u2500" * 30 + "\n"
+        + "\U0001f4ca Holat: " + status_map.get(o["status"], o["status"]) + "\n\n"
+        + "\U0001f3ea Do'kon: " + str(o["shop_name"] or "?") + "\n"
+        + "\U0001f464 Mijoz: " + mijoz + "\n"
+        + "\U0001f69a Kuryer: " + kuryer + "\n\n"
+        + "\U0001f6cd\ufe0f Mahsulotlar:\n  \u2022 " + products_fmt + "\n\n"
+        + "\U0001f4b0 Jami: " + f"{o['total_sum']:,.0f}" + " so'm\n"
+        + promo_text
+        + "\U0001f4b3 To'lov: " + str(o["payment_type"]) + "\n"
+        + "\U0001f4cd Manzil: " + str(o["address"]) + "\n\n"
+        + "\U0001f4c5 Yaratilgan: " + str(o["created_at"]) + "\n"
+        + "\u2705 Tasdiqlangan: " + str(o["confirmed_at"] or "\u2014") + "\n"
+        + "\U0001f69a Yetkazilgan: " + str(o["delivered_at"] or "\u2014") + "\n"
+    )
+
+    await callback.message.answer(text)
+
+    if o["check_photo"]:
+        try:
+            await callback.message.answer_photo(
+                o["check_photo"],
+                caption="\U0001f9fe #" + str(o["order_uid"]) + " \u2014 To'lov cheki"
+            )
+        except Exception as e:
+            await callback.message.answer("\U0001f4f8 Chek bor lekin yuklanmadi: " + str(e))
+
 
 # --- PROBLEMATIC ORDERS ---
 @dp.message(F.text == "⚠️ Muammoli")

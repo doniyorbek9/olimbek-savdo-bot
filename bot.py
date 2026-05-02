@@ -1041,8 +1041,14 @@ async def order_payment(callback: types.CallbackQuery, state: FSMContext):
         conn.close()
 
         card = shop['card_number'] if shop and shop['card_number'] else "Karta raqami kiritilmagan"
+        # card_number maydonida "RAQAM | ISM" formatida saqlangan
+        if " | " in card:
+            card_num, card_owner = card.split(" | ", 1)
+            card_display = f"<code>{card_num}</code>  |  <b>{card_owner}</b>"
+        else:
+            card_display = f"<code>{card}</code>"
         await callback.message.answer(
-            f"💳 Karta raqami: <code>{card}</code>\n\nShu kartaga pul o'tkazing va chek rasmini yuboring:",
+            f"💳 Karta raqami: {card_display}\n\nShu kartaga pul o'tkazing va chek rasmini yuboring:",
             parse_mode="HTML"
         )
         await state.set_state(OrderState.check_photo)
@@ -1145,6 +1151,12 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
                     await bot.send_message(shop['owner_tg_id'], admin_text, reply_markup=kb.as_markup())
             except Exception as e:
                 logger.error(f"Do'kon egasiga xabar yuborilmadi: {e}")
+                # Adminga ham xabar yuborish
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await bot.send_message(admin_id, f"⚠️ Do'kon egasiga ({shop['owner_tg_id']}) xabar yuborilmadi!\nBuyurtma #{order_uid}\nXato: {e}")
+                    except:
+                        pass
 
         cart_clear(tg_id)
         await state.clear()
@@ -3327,7 +3339,7 @@ async def promo_max_uses(message: types.Message, state: FSMContext):
             f"📅 Muddat: {expires_at or 'Cheksiz'}\n"
             f"👥 Limit: {max_uses if max_uses > 0 else 'Cheksiz'}"
         )
-    except sqlite3.IntegrityError:
+    except Exception:
         await message.answer("❌ Bu kod allaqachon mavjud!")
     conn.close()
     await state.clear()

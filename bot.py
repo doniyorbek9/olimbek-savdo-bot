@@ -3280,7 +3280,7 @@ async def full_order_detail(callback: types.CallbackQuery):
     o = c.fetchone()
 
     if not o:
-        await callback.message.answer("\u274c Buyurtma topilmadi")
+        await callback.message.answer("Buyurtma topilmadi")
         conn.close()
         return
 
@@ -3294,20 +3294,20 @@ async def full_order_detail(callback: types.CallbackQuery):
     conn.close()
 
     status_map = {
-        "pending":   "\u23f3 Kutilmoqda",
-        "confirmed": "\u2705 Tasdiqlandi",
-        "on_way":    "\U0001f697 Yo'lda",
-        "delivered": "\u2705 Yetkazildi",
-        "rejected":  "\u274c Rad etildi"
+        "pending":   "Kutilmoqda",
+        "confirmed": "Tasdiqlandi",
+        "on_way":    "Yo'lda",
+        "delivered": "Yetkazildi",
+        "rejected":  "Rad etildi"
     }
 
     if user:
-        mijoz = user["full_name"] + " | \U0001f4f1 " + str(user["phone"]) + " | TG: " + str(o["user_tg_id"])
+        mijoz = user["full_name"] + " | " + str(user["phone"]) + " | TG: " + str(o["user_tg_id"])
     else:
         mijoz = "Tel buyurtma | TG: " + str(o["user_tg_id"])
 
     if courier:
-        kuryer = courier["full_name"] + " | \U0001f4f1 " + str(courier["phone"]) + " | TG: " + str(o["courier_tg_id"])
+        kuryer = courier["full_name"] + " | " + str(courier["phone"]) + " | TG: " + str(o["courier_tg_id"])
     elif o["courier_tg_id"]:
         kuryer = "TG: " + str(o["courier_tg_id"])
     else:
@@ -3315,37 +3315,77 @@ async def full_order_detail(callback: types.CallbackQuery):
 
     promo_text = ""
     if o["promo_code"]:
-        promo_text = "\U0001f39f\ufe0f Promo: " + str(o["promo_code"]) + " (-" + f"{o['discount']:,.0f}" + " so'm)\n"
+        disc = "{:,.0f}".format(o["discount"])
+        promo_text = "Promo: " + str(o["promo_code"]) + " (-" + disc + " so'm)\n"
 
-    products_fmt = o["products"].replace("|", "\n  \u2022 ")
+    products_fmt = o["products"].replace("|", "\n  - ")
+    total = "{:,.0f}".format(o["total_sum"])
+    holat = status_map.get(o["status"], o["status"])
 
     text = (
-        "\U0001f4e6 BUYURTMA #" + str(o["order_uid"]) + "\n"
-        + "\u2500" * 30 + "\n"
-        + "\U0001f4ca Holat: " + status_map.get(o["status"], o["status"]) + "\n\n"
-        + "\U0001f3ea Do'kon: " + str(o["shop_name"] or "?") + "\n"
-        + "\U0001f464 Mijoz: " + mijoz + "\n"
-        + "\U0001f69a Kuryer: " + kuryer + "\n\n"
-        + "\U0001f6cd\ufe0f Mahsulotlar:\n  \u2022 " + products_fmt + "\n\n"
-        + "\U0001f4b0 Jami: " + f"{o['total_sum']:,.0f}" + " so'm\n"
+        "BUYURTMA #" + str(o["order_uid"]) + "\n"
+        + "-" * 28 + "\n"
+        + "Holat: " + holat + "\n\n"
+        + "Dokon: " + str(o["shop_name"] or "?") + "\n"
+        + "Mijoz: " + mijoz + "\n"
+        + "Kuryer: " + kuryer + "\n\n"
+        + "Mahsulotlar:\n  - " + products_fmt + "\n\n"
+        + "Jami: " + total + " so'm\n"
         + promo_text
-        + "\U0001f4b3 To'lov: " + str(o["payment_type"]) + "\n"
-        + "\U0001f4cd Manzil: " + str(o["address"]) + "\n\n"
-        + "\U0001f4c5 Yaratilgan: " + str(o["created_at"]) + "\n"
-        + "\u2705 Tasdiqlangan: " + str(o["confirmed_at"] or "\u2014") + "\n"
-        + "\U0001f69a Yetkazilgan: " + str(o["delivered_at"] or "\u2014") + "\n"
+        + "Tolov: " + str(o["payment_type"]) + "\n"
+        + "Manzil: " + str(o["address"]) + "\n\n"
+        + "Yaratilgan: " + str(o["created_at"]) + "\n"
+        + "Tasdiqlangan: " + str(o["confirmed_at"] or "-") + "\n"
+        + "Yetkazilgan: " + str(o["delivered_at"] or "-") + "\n"
     )
 
-    await callback.message.answer(text)
+    del_kb = InlineKeyboardBuilder()
+    del_kb.button(text="Buyurtmani ochirish", callback_data="del_order_" + str(o["order_uid"]))
+    del_kb.adjust(1)
+
+    await callback.message.answer(text, reply_markup=del_kb.as_markup())
 
     if o["check_photo"]:
         try:
             await callback.message.answer_photo(
                 o["check_photo"],
-                caption="\U0001f9fe #" + str(o["order_uid"]) + " \u2014 To'lov cheki"
+                caption="Chek #" + str(o["order_uid"])
             )
         except Exception as e:
-            await callback.message.answer("\U0001f4f8 Chek bor lekin yuklanmadi: " + str(e))
+            await callback.message.answer("Chek yuklanmadi: " + str(e))
+
+
+@dp.callback_query(F.data.startswith("del_order_") & ~F.data.startswith("del_order_yes_") & ~F.data.startswith("del_order_cancel"))
+async def delete_order_confirm(callback: types.CallbackQuery):
+    await callback.answer()
+    order_uid = callback.data[10:]
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Ha, ochirish", callback_data="del_order_yes_" + order_uid)
+    kb.button(text="Bekor qilish", callback_data="del_order_cancel")
+    kb.adjust(2)
+    await callback.message.answer(
+        "#" + order_uid + " buyurtmani ochirasizmi? Bu amalni ortga qaytarib bolmaydi!",
+        reply_markup=kb.as_markup()
+    )
+
+
+@dp.callback_query(F.data.startswith("del_order_yes_"))
+async def delete_order_execute(callback: types.CallbackQuery):
+    await callback.answer()
+    order_uid = callback.data[14:]
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM orders WHERE order_uid = %s", (order_uid,))
+    conn.commit()
+    conn.close()
+    await callback.message.answer("#" + order_uid + " buyurtma ochirildi.")
+
+
+@dp.callback_query(F.data == "del_order_cancel")
+async def delete_order_cancel(callback: types.CallbackQuery):
+    await callback.answer("Bekor qilindi")
+    await callback.message.delete()
+
 
 
 # --- PROBLEMATIC ORDERS ---

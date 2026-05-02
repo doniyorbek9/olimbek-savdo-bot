@@ -2323,30 +2323,22 @@ async def _send_chat_message(message, state):
         await message.answer("❌ Xabar yuborilmadi. Partner botni bloklagan bo'lishi mumkin.")
         return True
 
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
-              (tg_id, partner, text, chat["type"], now_str(), chat.get("order", "")))
-    conn.commit()
-    conn.close()
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
+            (tg_id, partner, text, chat["type"], now_str(), chat.get("order", ""))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as db_err:
+        logger.error(f"Chat DB save error: {db_err}")
     return False
 
 @dp.message(ChatState.chatting)
-async def chat_message(message, state):
+async def chat_message(message: types.Message, state: FSMContext):
     await _send_chat_message(message, state)
-
-# Fallback: bot restart bo'lganda FSM state yo'qolgan, lekin active_sessions bor
-@dp.message(F.text & ~F.text.startswith("/"))
-async def fallback_chat_handler(message, state):
-    """Bot restart bo'lganda session bor lekin FSM state yo'qolgan holat."""
-    cur_state = await state.get_state()
-    if cur_state is not None:
-        return  # Boshqa state da — bu handler kerak emas
-    tg_id = message.from_user.id
-    chat = chat_get_session(tg_id)
-    if chat:
-        await state.set_state(ChatState.chatting)
-        await _send_chat_message(message, state)
 @dp.callback_query(F.data == "end_chat")
 async def end_chat(callback: types.CallbackQuery, state: FSMContext):
     tg_id = callback.from_user.id
@@ -2393,26 +2385,28 @@ async def reply_chat_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Xato ID")
         return
     tg_id = callback.from_user.id
-
-    # Faqat javob beruvchi (masalan do'kon egasi) sessionini o'rnatamiz
-    # Partner (mijoz) sessionini buzmaslik uchun mavjud sessiyasini tekshiramiz
+    # Ikki tomonlama session o'rnatish
     existing_partner = chat_get_session(partner_tg_id)
-    if existing_partner:
-        # Partner sessiyasi bor, uning partner_id sini ishlatamiz
-        chat_set(tg_id, partner_tg_id, chat_type, existing_partner.get("order", ""))
-    else:
-        chat_set(tg_id, partner_tg_id, chat_type, "")
-        # Partner sessiyasi yo'q, o'rnatamiz
-        chat_set(partner_tg_id, tg_id, chat_type, "")
+    order_id = existing_partner.get("order", "") if existing_partner else ""
+
+    # Javob beruvchi sessiyasi (har doim yangilash)
+    chat_set(tg_id, partner_tg_id, chat_type, order_id)
+    # Partner sessiyasi yo'q bo'lsa o'rnatish
+    if not existing_partner:
+        chat_set(partner_tg_id, tg_id, chat_type, order_id)
 
     await state.set_state(ChatState.chatting)
+    await callback.answer()
     await callback.message.answer(
         "💬 Chat ochildi! Yozing.\nTugatish uchun pastdagi tugmani bosing:",
         reply_markup=chat_end_kb()
     )
-    await callback.answer()
     try:
-        await bot.send_message(partner_tg_id, "💬 Javob keldi! Endi yozishingiz mumkin.")
+        await bot.send_message(
+            partner_tg_id,
+            "💬 Javob keldi! Endi yozishingiz mumkin.",
+            reply_markup=chat_end_kb()
+        )
     except:
         pass
 

@@ -2266,7 +2266,7 @@ async def start_chat_with_shop(callback: types.CallbackQuery, state: FSMContext)
     )
     user = get_user(user_tg)
     user_name = user["full_name"] if user else str(user_tg)
-    await notify_partner_chat_started(shop_tg, "Mijoz " + user_name + " (Buyurtma #" + order_uid + ")", "shop_user", order_uid)
+    await notify_partner_chat_started(shop_tg, user_tg, "Mijoz " + user_name + " (Buyurtma #" + order_uid + ")", "shop_user", order_uid)
 
 @dp.message(ChatState.chatting)
 async def chat_message(message: types.Message, state: FSMContext):
@@ -2302,8 +2302,12 @@ async def chat_message(message: types.Message, state: FSMContext):
         courier = get_courier_by_tg(tg_id)
         sender_name = "🚚 Kuryer " + (courier["full_name"] if courier else str(tg_id))
     elif role == "shop":
-        shop = get_shop_by_owner(tg_id)
-        sender_name = "🏪 " + (shop["name"] if shop else "Do'kon egasi")
+        user_obj = get_user(tg_id)
+        if user_obj and user_obj["full_name"]:
+            sender_name = "🏪 " + user_obj["full_name"]
+        else:
+            shop = get_shop_by_owner(tg_id)
+            sender_name = "🏪 " + (shop["name"] + " egasi" if shop else "Do'kon egasi")
     elif role == "admin":
         sender_name = "👨‍💼 Admin"
     else:
@@ -2346,10 +2350,11 @@ def chat_end_kb():
     kb.button(text="🔴 Chatni tugatish")
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=False)
 
-async def notify_partner_chat_started(partner_tg_id, from_label, chat_type, order_uid=""):
+async def notify_partner_chat_started(partner_tg_id, initiator_tg_id, from_label, chat_type, order_uid=""):
     order_info = (" (Buyurtma #" + order_uid + ")") if order_uid else ""
     kb = InlineKeyboardBuilder()
-    kb.button(text="💬 Javob berish", callback_data="reply_chat:" + str(partner_tg_id) + ":" + chat_type)
+    # callback_data da initiator_tg_id beramiz - javob beruvchi shu odamga yozadi
+    kb.button(text="💬 Javob berish", callback_data="reply_chat:" + str(initiator_tg_id) + ":" + chat_type)
     msg = "💬 " + from_label + " siz bilan gaplashmoqchi" + order_info + ".\n\nJavob berish uchun tugmani bosing:"
     try:
         await bot.send_message(partner_tg_id, msg, reply_markup=kb.as_markup())
@@ -2369,8 +2374,18 @@ async def reply_chat_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Xato ID")
         return
     tg_id = callback.from_user.id
-    chat_set(tg_id, partner_tg_id, chat_type, "")
-    chat_set(partner_tg_id, tg_id, chat_type, "")
+
+    # Faqat javob beruvchi (masalan do'kon egasi) sessionini o'rnatamiz
+    # Partner (mijoz) sessionini buzmaslik uchun mavjud sessiyasini tekshiramiz
+    existing_partner = chat_get_session(partner_tg_id)
+    if existing_partner:
+        # Partner sessiyasi bor, uning partner_id sini ishlatamiz
+        chat_set(tg_id, partner_tg_id, chat_type, existing_partner.get("order", ""))
+    else:
+        chat_set(tg_id, partner_tg_id, chat_type, "")
+        # Partner sessiyasi yo'q, o'rnatamiz
+        chat_set(partner_tg_id, tg_id, chat_type, "")
+
     await state.set_state(ChatState.chatting)
     await callback.message.answer(
         "💬 Chat ochildi! Yozing.\nTugatish uchun pastdagi tugmani bosing:",
@@ -2407,7 +2422,7 @@ async def user_or_courier_chat_shop(message: types.Message, state: FSMContext):
         await message.answer("💬 " + shop_name + " egasi bilan chat boshlandi.\nYozing. Tugatish uchun pastdagi tugmani bosing:", reply_markup=chat_end_kb())
         courier_obj = get_courier_by_tg(tg_id)
         label = "Kuryer " + (courier_obj["full_name"] if courier_obj else str(tg_id))
-        await notify_partner_chat_started(shop_tg, label, "shop_courier")
+        await notify_partner_chat_started(shop_tg, tg_id, label, "shop_courier")
 
     else:
         # Oddiy mijoz - oxirgi buyurtmasining do'kon egasi
@@ -2433,7 +2448,7 @@ async def user_or_courier_chat_shop(message: types.Message, state: FSMContext):
         user = get_user(tg_id)
         await message.answer("💬 " + shop_name + " egasi bilan chat boshlandi.\nYozing. Tugatish uchun pastdagi tugmani bosing:", reply_markup=chat_end_kb())
         label = "Mijoz " + (user["full_name"] if user else str(tg_id))
-        await notify_partner_chat_started(shop_tg, label, "shop_user")
+        await notify_partner_chat_started(shop_tg, tg_id, label, "shop_user")
 
 @dp.message(F.text == "💬 Admin")
 async def user_or_courier_chat_admin(message: types.Message, state: FSMContext):
@@ -2455,7 +2470,7 @@ async def user_or_courier_chat_admin(message: types.Message, state: FSMContext):
     else:
         user = get_user(tg_id)
         label = "Mijoz " + (user["full_name"] if user else str(tg_id))
-    await notify_partner_chat_started(admin_id, label, "admin_user")
+    await notify_partner_chat_started(admin_id, tg_id, label, "admin_user")
 
 # ===================== ADMIN PANEL =====================
 

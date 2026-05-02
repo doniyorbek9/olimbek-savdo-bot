@@ -16,7 +16,8 @@ Thread(target=run).start()
 import asyncio
 import logging
 import random
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import os
 import io
 from datetime import datetime, date, timedelta
@@ -38,7 +39,7 @@ from PIL import Image, ImageDraw, ImageFont
 # ===================== CONFIG =====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_IDS = [7948989650]
-DB_PATH = "olimbek_savdo.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -149,8 +150,8 @@ class EditCourierState(StatesGroup):
 
 # ===================== DATABASE =====================
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    conn.autocommit = False
     return conn
 
 def init_db():
@@ -158,8 +159,8 @@ def init_db():
     c = conn.cursor()
 
     c.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY,
-        tg_id INTEGER UNIQUE,
+        id BIGINT PRIMARY KEY,
+        tg_id BIGINT UNIQUE,
         username TEXT,
         full_name TEXT,
         phone TEXT,
@@ -168,8 +169,8 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS shops (
-        id INTEGER PRIMARY KEY,
-        owner_tg_id INTEGER,
+        id BIGINT PRIMARY KEY,
+        owner_tg_id BIGINT,
         name TEXT,
         phone TEXT,
         card_number TEXT,
@@ -183,19 +184,19 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY,
-        shop_id INTEGER,
+        id BIGINT PRIMARY KEY,
+        shop_id BIGINT,
         name TEXT,
         price REAL,
         created_at TEXT
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS couriers (
-        id INTEGER PRIMARY KEY,
-        tg_id INTEGER UNIQUE,
+        id BIGINT PRIMARY KEY,
+        tg_id BIGINT UNIQUE,
         full_name TEXT,
         phone TEXT,
-        shop_id INTEGER,
+        shop_id BIGINT,
         is_busy INTEGER DEFAULT 0,
         is_blocked INTEGER DEFAULT 0,
         is_available INTEGER DEFAULT 1,
@@ -204,11 +205,11 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY,
+        id BIGINT PRIMARY KEY,
         order_uid TEXT UNIQUE,
-        user_tg_id INTEGER,
-        shop_id INTEGER,
-        courier_tg_id INTEGER,
+        user_tg_id BIGINT,
+        shop_id BIGINT,
+        courier_tg_id BIGINT,
         products TEXT,
         total_sum REAL,
         address TEXT,
@@ -225,7 +226,7 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS promo_codes (
-        id INTEGER PRIMARY KEY,
+        id BIGINT PRIMARY KEY,
         code TEXT UNIQUE,
         discount_type TEXT,
         discount_value REAL,
@@ -238,9 +239,9 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS chats (
-        id INTEGER PRIMARY KEY,
-        from_tg_id INTEGER,
-        to_tg_id INTEGER,
+        id BIGSERIAL PRIMARY KEY,
+        from_tg_id BIGINT,
+        to_tg_id BIGINT,
         message TEXT,
         chat_type TEXT,
         created_at TEXT,
@@ -248,8 +249,8 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS monthly_reports (
-        id INTEGER PRIMARY KEY,
-        shop_id INTEGER,
+        id BIGSERIAL PRIMARY KEY,
+        shop_id BIGINT,
         month TEXT,
         total_income REAL,
         admin_percent REAL,
@@ -258,22 +259,22 @@ def init_db():
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS admins (
-        id INTEGER PRIMARY KEY,
-        tg_id INTEGER UNIQUE,
+        id BIGSERIAL PRIMARY KEY,
+        tg_id BIGINT UNIQUE,
         added_at TEXT
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS carts (
-        tg_id INTEGER PRIMARY KEY,
-        shop_id INTEGER,
+        tg_id BIGINT PRIMARY KEY,
+        shop_id BIGINT,
         items TEXT,
         promo TEXT,
         discount REAL DEFAULT 0
     )''')
 
     c.execute('''CREATE TABLE IF NOT EXISTS active_sessions (
-        tg_id INTEGER PRIMARY KEY,
-        partner INTEGER,
+        tg_id BIGINT PRIMARY KEY,
+        partner BIGINT,
         chat_type TEXT,
         order_id TEXT
     )''')
@@ -292,7 +293,7 @@ def is_admin(tg_id):
         return True
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id FROM admins WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT id FROM admins WHERE tg_id=%s", (tg_id,))
     r = c.fetchone()
     conn.close()
     return r is not None
@@ -300,7 +301,7 @@ def is_admin(tg_id):
 def get_user(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT * FROM users WHERE tg_id=%s", (tg_id,))
     r = c.fetchone()
     conn.close()
     return r
@@ -308,7 +309,7 @@ def get_user(tg_id):
 def get_shop_by_owner(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM shops WHERE owner_tg_id=?", (tg_id,))
+    c.execute("SELECT * FROM shops WHERE owner_tg_id=%s", (tg_id,))
     r = c.fetchone()
     conn.close()
     return r
@@ -316,7 +317,7 @@ def get_shop_by_owner(tg_id):
 def get_courier_by_tg(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM couriers WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT * FROM couriers WHERE tg_id=%s", (tg_id,))
     r = c.fetchone()
     conn.close()
     return r
@@ -526,11 +527,11 @@ async def reg_name(message: types.Message, state: FSMContext):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (id, tg_id, username, full_name, phone, registered_at) VALUES (?,?,?,?,?,?)",
+        c.execute("INSERT INTO users (id, tg_id, username, full_name, phone, registered_at) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (tg_id) DO NOTHING",
                   (uid, tg_id, message.from_user.username or "", message.text, data['phone'], now_str()))
         conn.commit()
     except:
-        pass
+        conn.rollback()
     conn.close()
 
     await state.clear()
@@ -549,7 +550,7 @@ async def profile(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE user_tg_id=?", (message.from_user.id,))
+    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE user_tg_id=%s", (message.from_user.id,))
     order_count = c.fetchone()['cnt']
     conn.close()
 
@@ -569,7 +570,7 @@ async def profile(message: types.Message):
 async def my_orders(callback: types.CallbackQuery):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE user_tg_id=? ORDER BY created_at DESC LIMIT 20", (callback.from_user.id,))
+    c.execute("SELECT * FROM orders WHERE user_tg_id=%s ORDER BY created_at DESC LIMIT 20", (callback.from_user.id,))
     orders = c.fetchall()
     conn.close()
 
@@ -589,7 +590,7 @@ async def order_detail(callback: types.CallbackQuery):
     uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (uid,))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (uid,))
     o = c.fetchone()
     conn.close()
 
@@ -613,7 +614,7 @@ async def order_detail(callback: types.CallbackQuery):
     kb = InlineKeyboardBuilder()
     conn2 = get_db()
     c2 = conn2.cursor()
-    c2.execute("SELECT owner_tg_id FROM shops WHERE id=?", (o['shop_id'],))
+    c2.execute("SELECT owner_tg_id FROM shops WHERE id=%s", (o['shop_id'],))
     shop = c2.fetchone()
     conn2.close()
 
@@ -647,9 +648,9 @@ async def shop_detail(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[1])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
-    c.execute("SELECT * FROM products WHERE shop_id=?", (shop_id,))
+    c.execute("SELECT * FROM products WHERE shop_id=%s", (shop_id,))
     products = c.fetchall()
     conn.close()
 
@@ -691,7 +692,7 @@ async def back_shops(callback: types.CallbackQuery):
 def cart_get(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM carts WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT * FROM carts WHERE tg_id=%s", (tg_id,))
     row = c.fetchone()
     conn.close()
     if not row:
@@ -709,10 +710,10 @@ def cart_save(tg_id, data):
     conn = get_db()
     c = conn.cursor()
     c.execute('''INSERT INTO carts (tg_id, shop_id, items, promo, discount)
-                 VALUES (?,?,?,?,?)
-                 ON CONFLICT(tg_id) DO UPDATE SET
-                 shop_id=excluded.shop_id, items=excluded.items,
-                 promo=excluded.promo, discount=excluded.discount''',
+                 VALUES (%s,%s,%s,%s,%s)
+                 ON CONFLICT (tg_id) DO UPDATE SET
+                 shop_id=EXCLUDED.shop_id, items=EXCLUDED.items,
+                 promo=EXCLUDED.promo, discount=EXCLUDED.discount''',
               (tg_id, data.get("shop_id"), json.dumps(data.get("items", {})),
                data.get("promo", ""), data.get("discount", 0)))
     conn.commit()
@@ -721,7 +722,7 @@ def cart_save(tg_id, data):
 def cart_clear(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM carts WHERE tg_id=?", (tg_id,))
+    c.execute("DELETE FROM carts WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
 
@@ -734,7 +735,7 @@ async def add_to_cart(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE id=?", (prod_id,))
+    c.execute("SELECT * FROM products WHERE id=%s", (prod_id,))
     product = c.fetchone()
     conn.close()
 
@@ -761,9 +762,9 @@ async def add_to_cart(callback: types.CallbackQuery):
     # Do'kon sahifasini yangi miqdor bilan yangilash
     conn2 = get_db()
     c2 = conn2.cursor()
-    c2.execute("SELECT * FROM shops WHERE id=?", (shop_id,))
+    c2.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
     shop = c2.fetchone()
-    c2.execute("SELECT * FROM products WHERE shop_id=?", (shop_id,))
+    c2.execute("SELECT * FROM products WHERE shop_id=%s", (shop_id,))
     products_list = c2.fetchall()
     conn2.close()
 
@@ -921,7 +922,7 @@ async def check_promo(message: types.Message, state: FSMContext):
     code = message.text.strip().upper()
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM promo_codes WHERE code=?", (code,))
+    c.execute("SELECT * FROM promo_codes WHERE code=%s", (code,))
     promo = c.fetchone()
     conn.close()
 
@@ -1036,7 +1037,7 @@ async def order_payment(callback: types.CallbackQuery, state: FSMContext):
         shop_id = cart_data.get("shop_id")
         conn = get_db()
         c = conn.cursor()
-        c.execute("SELECT card_number FROM shops WHERE id=?", (shop_id,))
+        c.execute("SELECT card_number FROM shops WHERE id=%s", (shop_id,))
         shop = c.fetchone()
         conn.close()
 
@@ -1087,15 +1088,15 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
         c = conn.cursor()
         c.execute('''INSERT INTO orders (order_uid, user_tg_id, shop_id, products, total_sum, address,
                   latitude, longitude, payment_type, status, created_at, check_photo, promo_code, discount)
-                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                   (order_uid, tg_id, shop_id, products_str, total,
                    data.get('address', ''), data.get('lat'), data.get('lon'),
                    payment_type, 'pending', now_str(), check_photo_id, promo, discount))
 
         if promo:
-            c.execute("UPDATE promo_codes SET used_count=used_count+1 WHERE code=?", (promo,))
+            c.execute("UPDATE promo_codes SET used_count=used_count+1 WHERE code=%s", (promo,))
 
-        c.execute("SELECT * FROM shops WHERE id=?", (shop_id,))
+        c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
         shop = c.fetchone()
         conn.commit()
         conn.close()
@@ -1159,8 +1160,8 @@ async def confirm_order(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE orders SET status='confirmed', confirmed_at=? WHERE order_uid=?", (now_str(), order_uid))
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("UPDATE orders SET status='confirmed', confirmed_at=%s WHERE order_uid=%s", (now_str(), order_uid))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     order = c.fetchone()
     conn.commit()
     conn.close()
@@ -1176,8 +1177,8 @@ async def reject_order(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE orders SET status='rejected', confirmed_at=? WHERE order_uid=?", (now_str(), order_uid))
-    c.execute("SELECT user_tg_id, shop_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("UPDATE orders SET status='rejected', confirmed_at=%s WHERE order_uid=%s", (now_str(), order_uid))
+    c.execute("SELECT user_tg_id, shop_id FROM orders WHERE order_uid=%s", (order_uid,))
     order = c.fetchone()
     conn.commit()
     conn.close()
@@ -1185,7 +1186,7 @@ async def reject_order(callback: types.CallbackQuery):
     if order:
         c2 = get_db()
         cur = c2.cursor()
-        cur.execute("SELECT owner_tg_id, phone FROM shops WHERE id=?", (order['shop_id'],))
+        cur.execute("SELECT owner_tg_id, phone FROM shops WHERE id=%s", (order['shop_id'],))
         shop = cur.fetchone()
         c2.close()
 
@@ -1206,7 +1207,7 @@ courier_queues = {}
 async def assign_courier(order_uid, user_tg_id, shop_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM couriers WHERE shop_id=? AND is_blocked=0 AND is_available=1 ORDER BY queue_order ASC", (shop_id,))
+    c.execute("SELECT * FROM couriers WHERE shop_id=%s AND is_blocked=0 AND is_available=1 ORDER BY queue_order ASC", (shop_id,))
     couriers = c.fetchall()
     conn.close()
 
@@ -1228,7 +1229,7 @@ async def assign_courier(order_uid, user_tg_id, shop_id):
 async def send_courier_offer(order_uid, courier, all_couriers, attempt):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     order = c.fetchone()
     conn.close()
 
@@ -1242,9 +1243,9 @@ async def send_courier_offer(order_uid, courier, all_couriers, attempt):
 
     conn2 = get_db()
     c2 = conn2.cursor()
-    c2.execute("SELECT * FROM users WHERE tg_id=?", (order['user_tg_id'],))
+    c2.execute("SELECT * FROM users WHERE tg_id=%s", (order['user_tg_id'],))
     user = c2.fetchone()
-    c2.execute("SELECT * FROM shops WHERE id=?", (order['shop_id'],))
+    c2.execute("SELECT * FROM shops WHERE id=%s", (order['shop_id'],))
     shop = c2.fetchone()
     conn2.close()
 
@@ -1274,11 +1275,11 @@ async def take_order(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE orders SET courier_tg_id=?, status='confirmed' WHERE order_uid=?", (courier_tg, order_uid))
-    c.execute("UPDATE couriers SET is_busy=1 WHERE tg_id=?", (courier_tg,))
-    c.execute("SELECT user_tg_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("UPDATE orders SET courier_tg_id=%s, status='confirmed' WHERE order_uid=%s", (courier_tg, order_uid))
+    c.execute("UPDATE couriers SET is_busy=1 WHERE tg_id=%s", (courier_tg,))
+    c.execute("SELECT user_tg_id FROM orders WHERE order_uid=%s", (order_uid,))
     order = c.fetchone()
-    c.execute("SELECT full_name, phone FROM couriers WHERE tg_id=?", (courier_tg,))
+    c.execute("SELECT full_name, phone FROM couriers WHERE tg_id=%s", (courier_tg,))
     courier = c.fetchone()
     conn.commit()
     conn.close()
@@ -1305,14 +1306,14 @@ async def skip_order(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT shop_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT shop_id FROM orders WHERE order_uid=%s", (order_uid,))
     order = c.fetchone()
     conn.close()
 
     if order:
         conn2 = get_db()
         c2 = conn2.cursor()
-        c2.execute("SELECT * FROM couriers WHERE shop_id=? AND is_blocked=0 AND is_available=1 AND is_busy=0 ORDER BY queue_order ASC",
+        c2.execute("SELECT * FROM couriers WHERE shop_id=%s AND is_blocked=0 AND is_available=1 AND is_busy=0 ORDER BY queue_order ASC",
                    (order['shop_id'],))
         couriers = c2.fetchall()
         conn2.close()
@@ -1336,7 +1337,7 @@ async def courier_orders(message: types.Message):
     tg_id = message.from_user.id
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE courier_tg_id=? AND status NOT IN ('delivered','rejected') ORDER BY created_at DESC", (tg_id,))
+    c.execute("SELECT * FROM orders WHERE courier_tg_id=%s AND status NOT IN ('delivered','rejected') ORDER BY created_at DESC", (tg_id,))
     orders = c.fetchall()
     conn.close()
 
@@ -1355,7 +1356,7 @@ async def courier_order_detail(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     conn.close()
 
@@ -1389,7 +1390,7 @@ async def courier_accept(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT user_tg_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT user_tg_id FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     conn.close()
     if o and o['user_tg_id'] != 0:
@@ -1401,8 +1402,8 @@ async def courier_onway(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE orders SET status='on_way' WHERE order_uid=?", (order_uid,))
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("UPDATE orders SET status='on_way' WHERE order_uid=%s", (order_uid,))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     conn.commit()
     conn.close()
@@ -1426,10 +1427,10 @@ async def courier_delivered(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE orders SET status='delivered', delivered_at=? WHERE order_uid=?", (now_str(), order_uid))
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("UPDATE orders SET status='delivered', delivered_at=%s WHERE order_uid=%s", (now_str(), order_uid))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
-    c.execute("UPDATE couriers SET is_busy=0 WHERE tg_id=?", (callback.from_user.id,))
+    c.execute("UPDATE couriers SET is_busy=0 WHERE tg_id=%s", (callback.from_user.id,))
     conn.commit()
     conn.close()
 
@@ -1437,7 +1438,7 @@ async def courier_delivered(callback: types.CallbackQuery):
     if o:
         conn2 = get_db()
         c2 = conn2.cursor()
-        c2.execute("SELECT owner_tg_id, name FROM shops WHERE id=?", (o['shop_id'],))
+        c2.execute("SELECT owner_tg_id, name FROM shops WHERE id=%s", (o['shop_id'],))
         shop = c2.fetchone()
         conn2.close()
         if shop:
@@ -1471,14 +1472,14 @@ async def courier_error(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT user_tg_id, shop_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT user_tg_id, shop_id FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     conn.close()
 
     if o:
         c2 = get_db()
         cur = c2.cursor()
-        cur.execute("SELECT phone FROM shops WHERE id=?", (o['shop_id'],))
+        cur.execute("SELECT phone FROM shops WHERE id=%s", (o['shop_id'],))
         shop = cur.fetchone()
         c2.close()
 
@@ -1499,14 +1500,14 @@ async def rate_shop(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT shop_id FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT shop_id FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     if o:
-        c.execute("SELECT rating, rating_count FROM shops WHERE id=?", (o['shop_id'],))
+        c.execute("SELECT rating, rating_count FROM shops WHERE id=%s", (o['shop_id'],))
         shop = c.fetchone()
         new_count = shop['rating_count'] + 1
         new_rating = (shop['rating'] * shop['rating_count'] + stars) / new_count
-        c.execute("UPDATE shops SET rating=?, rating_count=? WHERE id=?", (new_rating, new_count, o['shop_id']))
+        c.execute("UPDATE shops SET rating=%s, rating_count=%s WHERE id=%s", (new_rating, new_count, o['shop_id']))
         conn.commit()
     conn.close()
 
@@ -1519,11 +1520,11 @@ async def toggle_busy(message: types.Message):
     tg_id = message.from_user.id
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT is_available FROM couriers WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT is_available FROM couriers WHERE tg_id=%s", (tg_id,))
     courier = c.fetchone()
     if courier:
         new_val = 0 if courier['is_available'] else 1
-        c.execute("UPDATE couriers SET is_available=? WHERE tg_id=?", (new_val, tg_id))
+        c.execute("UPDATE couriers SET is_available=%s WHERE tg_id=%s", (new_val, tg_id))
         conn.commit()
         status = "✅ Faol" if new_val else "📵 Band (buyurtma olmaysiz)"
         await message.answer(f"Holat o'zgartirildi: {status}")
@@ -1536,7 +1537,7 @@ async def courier_daily(message: types.Message):
     today = datetime.now().strftime("%d.%m.%Y")
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE courier_tg_id=? AND delivered_at LIKE ?", (tg_id, f"{today}%"))
+    c.execute("SELECT * FROM orders WHERE courier_tg_id=%s AND delivered_at LIKE %s", (tg_id, f"{today}%"))
     orders = c.fetchall()
     conn.close()
 
@@ -1554,7 +1555,7 @@ async def report_30(message: types.Message):
 
     if role == "courier":
         since = (datetime.now() - timedelta(days=30)).strftime("%d.%m.%Y")
-        c.execute("SELECT * FROM orders WHERE courier_tg_id=? AND status='delivered'", (tg_id,))
+        c.execute("SELECT * FROM orders WHERE courier_tg_id=%s AND status='delivered'", (tg_id,))
         orders = c.fetchall()
         count = len(orders)
         total = sum(o['total_sum'] for o in orders)
@@ -1563,7 +1564,7 @@ async def report_30(message: types.Message):
     elif role == "shop":
         shop = get_shop_by_owner(tg_id)
         if shop:
-            c.execute("SELECT * FROM orders WHERE shop_id=? AND status='delivered'", (shop['id'],))
+            c.execute("SELECT * FROM orders WHERE shop_id=%s AND status='delivered'", (shop['id'],))
             orders = c.fetchall()
             count = len(orders)
             total = sum(o['total_sum'] for o in orders)
@@ -1584,7 +1585,7 @@ async def toggle_shop(message: types.Message):
     conn = get_db()
     c = conn.cursor()
     new_val = 0 if shop['is_open'] else 1
-    c.execute("UPDATE shops SET is_open=? WHERE id=?", (new_val, shop['id']))
+    c.execute("UPDATE shops SET is_open=%s WHERE id=%s", (new_val, shop['id']))
     conn.commit()
     conn.close()
     status = "🔓 Ochiq" if new_val else "🔒 Yopiq"
@@ -1633,7 +1634,7 @@ async def save_shop_card_name(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE shops SET card_number=? WHERE id=?", (card_info, shop['id']))
+    c.execute("UPDATE shops SET card_number=%s WHERE id=%s", (card_info, shop['id']))
     conn.commit()
     conn.close()
 
@@ -1654,7 +1655,7 @@ async def save_shop_edit(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(f"UPDATE shops SET {db_field}=? WHERE id=?", (message.text, shop['id']))
+    c.execute(f"UPDATE shops SET {db_field}=%s WHERE id=%s", (message.text, shop['id']))
     conn.commit()
     conn.close()
 
@@ -1679,7 +1680,7 @@ async def products_menu(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE shop_id=?", (shop['id'],))
+    c.execute("SELECT * FROM products WHERE shop_id=%s", (shop['id'],))
     prods = c.fetchall()
     conn.close()
 
@@ -1717,7 +1718,7 @@ async def add_prod_price(message: types.Message, state: FSMContext):
     uid = gen_id()
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT INTO products (id, shop_id, name, price, created_at) VALUES (?,?,?,?,?)",
+    c.execute("INSERT INTO products (id, shop_id, name, price, created_at) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING",
               (uid, data['shop_id'], data['prod_name'], price, now_str()))
     conn.commit()
     conn.close()
@@ -1730,7 +1731,7 @@ async def edit_product(callback: types.CallbackQuery, state: FSMContext):
     prod_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE id=?", (prod_id,))
+    c.execute("SELECT * FROM products WHERE id=%s", (prod_id,))
     prod = c.fetchone()
     conn.close()
 
@@ -1761,11 +1762,11 @@ async def save_prod_edit(message: types.Message, state: FSMContext):
     conn = get_db()
     c = conn.cursor()
     if data['field'] == 'name':
-        c.execute("UPDATE products SET name=? WHERE id=?", (message.text, data['prod_id']))
+        c.execute("UPDATE products SET name=%s WHERE id=%s", (message.text, data['prod_id']))
     else:
         try:
             price = float(message.text.replace(",", "").replace(" ", ""))
-            c.execute("UPDATE products SET price=? WHERE id=?", (price, data['prod_id']))
+            c.execute("UPDATE products SET price=%s WHERE id=%s", (price, data['prod_id']))
         except:
             await message.answer("❌ Noto'g'ri narx")
             conn.close()
@@ -1780,7 +1781,7 @@ async def delete_product(callback: types.CallbackQuery):
     prod_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM products WHERE id=?", (prod_id,))
+    c.execute("DELETE FROM products WHERE id=%s", (prod_id,))
     conn.commit()
     conn.close()
     await callback.message.answer("🗑️ Mahsulot o'chirildi")
@@ -1814,7 +1815,7 @@ async def excel_upload_file(message: types.Message, state: FSMContext):
                 try:
                     price = float(str(row[2]).replace(",", "").replace(" ", ""))
                     uid = gen_id()
-                    c.execute("INSERT OR IGNORE INTO products (id, shop_id, name, price, created_at) VALUES (?,?,?,?,?)",
+                    c.execute("INSERT INTO products (id, shop_id, name, price, created_at) VALUES (%s,%s,%s,%s,%s)",
                               (uid, shop_id, str(row[1]), price, now_str()))
                     count += 1
                 except:
@@ -1832,7 +1833,7 @@ async def excel_update(callback: types.CallbackQuery, state: FSMContext):
     shop_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE shop_id=?", (shop_id,))
+    c.execute("SELECT * FROM products WHERE shop_id=%s", (shop_id,))
     prods = c.fetchall()
     conn.close()
 
@@ -1911,7 +1912,7 @@ async def excel_update_file(message: types.Message, state: FSMContext):
         c = conn.cursor()
 
         # Eski mahsulotlarni o'chirish
-        c.execute("DELETE FROM products WHERE shop_id=?", (shop_id,))
+        c.execute("DELETE FROM products WHERE shop_id=%s", (shop_id,))
 
         count = 0
         for row in ws.iter_rows(min_row=2, values_only=True):
@@ -1919,7 +1920,7 @@ async def excel_update_file(message: types.Message, state: FSMContext):
                 try:
                     price = float(str(row[2]).replace(",", "").replace(" ", ""))
                     uid = gen_id()
-                    c.execute("INSERT INTO products (id, shop_id, name, price, created_at) VALUES (?,?,?,?,?)",
+                    c.execute("INSERT INTO products (id, shop_id, name, price, created_at) VALUES (%s,%s,%s,%s,%s)",
                               (uid, shop_id, str(row[1]), price, now_str()))
                     count += 1
                 except:
@@ -1977,12 +1978,12 @@ async def shop_add_courier_phone(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM couriers WHERE shop_id=?", (shop['id'],))
+    c.execute("SELECT COUNT(*) as cnt FROM couriers WHERE shop_id=%s", (shop['id'],))
     queue_order = c.fetchone()['cnt']
 
     try:
         c.execute(
-            "INSERT INTO couriers (id, tg_id, full_name, phone, shop_id, queue_order, registered_at) VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO couriers (id, tg_id, full_name, phone, shop_id, queue_order, registered_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
             (uid, tg_id, name, phone, shop['id'], queue_order, now_str())
         )
         conn.commit()
@@ -2035,7 +2036,7 @@ async def vacation_set(message: types.Message, state: FSMContext):
     if shop:
         conn = get_db()
         c = conn.cursor()
-        c.execute("UPDATE shops SET vacation_until=?, is_open=0 WHERE id=?", (message.text, shop['id']))
+        c.execute("UPDATE shops SET vacation_until=%s, is_open=0 WHERE id=%s", (message.text, shop['id']))
         conn.commit()
         conn.close()
 
@@ -2066,7 +2067,7 @@ async def save_shop_phone(message: types.Message, state: FSMContext):
     if shop:
         conn = get_db()
         c = conn.cursor()
-        c.execute("UPDATE shops SET phone=? WHERE id=?", (message.text, shop['id']))
+        c.execute("UPDATE shops SET phone=%s WHERE id=%s", (message.text, shop['id']))
         conn.commit()
         conn.close()
     await message.answer("✅ Nomer saqlandi!")
@@ -2131,7 +2132,7 @@ async def po_payment(callback: types.CallbackQuery, state: FSMContext):
     conn = get_db()
     c = conn.cursor()
     c.execute('''INSERT INTO orders (order_uid, user_tg_id, shop_id, products, total_sum, address,
-              payment_type, status, created_at) VALUES (?,?,?,?,?,?,?,?,?)''',
+              payment_type, status, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
               (order_uid, 0, shop_id, data['product'], price,
                f"Tel: {data['client_name']} / {data['client_phone']} / {address}",
                payment, 'confirmed', now_str()))
@@ -2166,14 +2167,14 @@ async def daily_report(message: types.Message):
     if role == "shop":
         shop = get_shop_by_owner(tg_id)
         if shop:
-            c.execute("SELECT * FROM orders WHERE shop_id=? AND created_at LIKE ? AND status='delivered'",
+            c.execute("SELECT * FROM orders WHERE shop_id=%s AND created_at LIKE %s AND status='delivered'",
                       (shop['id'], f"{today}%"))
             orders = c.fetchall()
             count = len(orders)
             total = sum(o['total_sum'] for o in orders)
             await message.answer(f"📅 Bugungi hisobot ({today})\n\n📦 Buyurtmalar: {count}\n💰 Daromad: {total:,.0f} so'm")
     elif role == "admin":
-        c.execute("SELECT * FROM orders WHERE created_at LIKE ? AND status='delivered'", (f"{today}%",))
+        c.execute("SELECT * FROM orders WHERE created_at LIKE %s AND status='delivered'", (f"{today}%",))
         orders = c.fetchall()
         count = len(orders)
         total = sum(o['total_sum'] for o in orders)
@@ -2187,7 +2188,7 @@ def chat_set(tg_id, partner, chat_type, order_id=""):
     conn = get_db()
     c = conn.cursor()
     c.execute('''INSERT INTO active_sessions (tg_id, partner, chat_type, order_id)
-                 VALUES (?,?,?,?)
+                 VALUES (%s,%s,%s,%s)
                  ON CONFLICT(tg_id) DO UPDATE SET
                  partner=excluded.partner, chat_type=excluded.chat_type, order_id=excluded.order_id''',
               (tg_id, partner, chat_type, order_id))
@@ -2197,7 +2198,7 @@ def chat_set(tg_id, partner, chat_type, order_id=""):
 def chat_get_session(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM active_sessions WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT * FROM active_sessions WHERE tg_id=%s", (tg_id,))
     row = c.fetchone()
     conn.close()
     if not row:
@@ -2207,7 +2208,7 @@ def chat_get_session(tg_id):
 def chat_remove(tg_id):
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM active_sessions WHERE tg_id=?", (tg_id,))
+    c.execute("DELETE FROM active_sessions WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
 
@@ -2226,7 +2227,7 @@ async def start_chat_with_shop(callback: types.CallbackQuery, state: FSMContext)
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT owner_tg_id, name FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT owner_tg_id, name FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
     conn.close()
 
@@ -2267,7 +2268,7 @@ async def chat_message(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (?,?,?,?,?,?)",
+    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
               (tg_id, partner, message.text, chat['type'], now_str(), chat.get('order', '')))
     conn.commit()
     conn.close()
@@ -2298,7 +2299,7 @@ async def courier_chat_shop(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT owner_tg_id FROM shops WHERE id=?", (courier['shop_id'],))
+    c.execute("SELECT owner_tg_id FROM shops WHERE id=%s", (courier['shop_id'],))
     shop = c.fetchone()
     conn.close()
 
@@ -2363,9 +2364,9 @@ async def admin_shop_detail(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
-    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE shop_id=?", (shop_id,))
+    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE shop_id=%s", (shop_id,))
     order_count = c.fetchone()['cnt']
     conn.close()
 
@@ -2407,9 +2408,9 @@ async def admin_toggle_shop(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT is_open FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT is_open FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
-    c.execute("UPDATE shops SET is_open=? WHERE id=?", (0 if shop['is_open'] else 1, shop_id))
+    c.execute("UPDATE shops SET is_open=%s WHERE id=%s", (0 if shop['is_open'] else 1, shop_id))
     conn.commit()
     conn.close()
     await callback.answer("✅ O'zgartirildi")
@@ -2427,9 +2428,9 @@ async def admin_confirm_delete_shop(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[3])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT owner_tg_id, name FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT owner_tg_id, name FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
-    c.execute("DELETE FROM shops WHERE id=?", (shop_id,))
+    c.execute("DELETE FROM shops WHERE id=%s", (shop_id,))
     conn.commit()
     conn.close()
 
@@ -2461,8 +2462,8 @@ async def save_admin_percent(message: types.Message, state: FSMContext):
     data = await state.get_data()
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE shops SET admin_percent=? WHERE id=?", (percent, data['shop_id']))
-    c.execute("SELECT owner_tg_id FROM shops WHERE id=?", (data['shop_id'],))
+    c.execute("UPDATE shops SET admin_percent=%s WHERE id=%s", (percent, data['shop_id']))
+    c.execute("SELECT owner_tg_id FROM shops WHERE id=%s", (data['shop_id'],))
     shop = c.fetchone()
     conn.commit()
     conn.close()
@@ -2493,7 +2494,7 @@ async def save_admin_shop_edit(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute(f"UPDATE shops SET {db_field}=? WHERE id=?", (message.text, data['shop_id']))
+    c.execute(f"UPDATE shops SET {db_field}=%s WHERE id=%s", (message.text, data['shop_id']))
     conn.commit()
     conn.close()
 
@@ -2505,7 +2506,7 @@ async def admin_shop_orders(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE shop_id=? ORDER BY created_at DESC LIMIT 30", (shop_id,))
+    c.execute("SELECT * FROM orders WHERE shop_id=%s ORDER BY created_at DESC LIMIT 30", (shop_id,))
     orders = c.fetchall()
     conn.close()
 
@@ -2527,7 +2528,7 @@ async def admin_order_detail(callback: types.CallbackQuery):
     order_uid = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE order_uid=?", (order_uid,))
+    c.execute("SELECT * FROM orders WHERE order_uid=%s", (order_uid,))
     o = c.fetchone()
     conn.close()
 
@@ -2576,7 +2577,7 @@ async def add_shop_name(message: types.Message, state: FSMContext):
     uid = gen_id()
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT INTO shops (id, owner_tg_id, name, created_at) VALUES (?,?,?,?)",
+    c.execute("INSERT INTO shops (id, owner_tg_id, name, created_at) VALUES (%s,%s,%s,%s)",
               (uid, data['owner_tg_id'], message.text, now_str()))
     conn.commit()
     conn.close()
@@ -2641,9 +2642,9 @@ async def admin_user_detail(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE user_tg_id=?", (tg_id,))
+    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE user_tg_id=%s", (tg_id,))
     order_count = c.fetchone()['cnt']
-    c.execute("SELECT MAX(created_at) as last FROM orders WHERE user_tg_id=?", (tg_id,))
+    c.execute("SELECT MAX(created_at) as last FROM orders WHERE user_tg_id=%s", (tg_id,))
     last_order = c.fetchone()['last']
     conn.close()
 
@@ -2669,7 +2670,7 @@ async def block_user(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE users SET is_blocked=1 WHERE tg_id=?", (tg_id,))
+    c.execute("UPDATE users SET is_blocked=1 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
     await callback.answer("🚫 Bloklandi")
@@ -2679,7 +2680,7 @@ async def unblock_user(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE users SET is_blocked=0 WHERE tg_id=?", (tg_id,))
+    c.execute("UPDATE users SET is_blocked=0 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
     await callback.answer("✅ Blokdan chiqarildi")
@@ -2710,9 +2711,9 @@ async def admin_courier_detail(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[1])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT couriers.*, shops.name as shop_name FROM couriers LEFT JOIN shops ON couriers.shop_id=shops.id WHERE couriers.tg_id=?", (tg_id,))
+    c.execute("SELECT couriers.*, shops.name as shop_name FROM couriers LEFT JOIN shops ON couriers.shop_id=shops.id WHERE couriers.tg_id=%s", (tg_id,))
     cur = c.fetchone()
-    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE courier_tg_id=? AND status='delivered'", (tg_id,))
+    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE courier_tg_id=%s AND status='delivered'", (tg_id,))
     delivered = c.fetchone()['cnt']
     conn.close()
 
@@ -2743,7 +2744,7 @@ async def block_courier(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE couriers SET is_blocked=1 WHERE tg_id=?", (tg_id,))
+    c.execute("UPDATE couriers SET is_blocked=1 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
     await callback.answer("🚫 Bloklandi")
@@ -2753,7 +2754,7 @@ async def unblock_courier(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE couriers SET is_blocked=0 WHERE tg_id=?", (tg_id,))
+    c.execute("UPDATE couriers SET is_blocked=0 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
     await callback.answer("✅ Blokdan chiqarildi")
@@ -2776,9 +2777,9 @@ async def delete_courier_execute(callback: types.CallbackQuery):
     tg_id = int(callback.data.split("_")[3])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT full_name FROM couriers WHERE tg_id=?", (tg_id,))
+    c.execute("SELECT full_name FROM couriers WHERE tg_id=%s", (tg_id,))
     cur = c.fetchone()
-    c.execute("DELETE FROM couriers WHERE tg_id=?", (tg_id,))
+    c.execute("DELETE FROM couriers WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
 
@@ -2832,7 +2833,7 @@ async def add_courier_shop(callback: types.CallbackQuery, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt FROM couriers WHERE shop_id=?", (shop_id,))
+    c.execute("SELECT COUNT(*) as cnt FROM couriers WHERE shop_id=%s", (shop_id,))
     queue_order = c.fetchone()['cnt']
 
     await callback.message.answer(
@@ -2842,7 +2843,7 @@ async def add_courier_shop(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(AddCourierState.tg_id if hasattr(AddCourierState, 'tg_id') else AddCourierState.name)
 
     # Save without tg_id for now - simplified
-    c.execute("INSERT OR IGNORE INTO couriers (id, tg_id, full_name, phone, shop_id, queue_order, registered_at) VALUES (?,?,?,?,?,?,?)",
+    c.execute("INSERT INTO couriers (id, tg_id, full_name, phone, shop_id, queue_order, registered_at) VALUES (%s,%s,%s,%s,%s,%s,%s)",
               (uid, uid, data['name'], data['phone'], shop_id, queue_order, now_str()))
     conn.commit()
     conn.close()
@@ -2863,7 +2864,7 @@ async def set_courier_id(message: types.Message):
         return
     conn = get_db()
     c = conn.cursor()
-    c.execute("UPDATE couriers SET tg_id=? WHERE id=?", (int(parts[2]), int(parts[1])))
+    c.execute("UPDATE couriers SET tg_id=%s WHERE id=%s", (int(parts[2]), int(parts[1])))
     conn.commit()
     conn.close()
     await message.answer("✅ Yangilandi!")
@@ -2885,7 +2886,7 @@ async def admin_stats(message: types.Message):
     c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered'")
     all_orders = c.fetchone()
     today = datetime.now().strftime("%d.%m.%Y")
-    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered' AND created_at LIKE ?",
+    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered' AND created_at LIKE %s",
               (f"{today}%",))
     today_orders = c.fetchone()
     conn.close()
@@ -2895,10 +2896,10 @@ async def admin_stats(message: types.Message):
     for s in shops:
         conn2 = get_db()
         c2 = conn2.cursor()
-        c2.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE shop_id=? AND status='delivered'",
+        c2.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE shop_id=%s AND status='delivered'",
                    (s['id'],))
         sr = c2.fetchone()
-        c2.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE shop_id=? AND status='delivered' AND created_at LIKE ?",
+        c2.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE shop_id=%s AND status='delivered' AND created_at LIKE %s",
                    (s['id'], f"{today}%"))
         sr_today = c2.fetchone()
         conn2.close()
@@ -3001,7 +3002,7 @@ async def do_search(message: types.Message, state: FSMContext):
     c = conn.cursor()
 
     if stype == "users":
-        c.execute("SELECT * FROM users WHERE full_name LIKE ? OR phone LIKE ? OR CAST(id AS TEXT) LIKE ? OR CAST(tg_id AS TEXT) LIKE ?",
+        c.execute("SELECT * FROM users WHERE full_name LIKE %s OR phone LIKE %s OR CAST(id AS TEXT) LIKE %s OR CAST(tg_id AS TEXT) LIKE %s",
                   (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"))
         results = c.fetchall()
         if results:
@@ -3012,7 +3013,7 @@ async def do_search(message: types.Message, state: FSMContext):
             text = "❌ Topilmadi"
 
     elif stype == "shops":
-        c.execute("SELECT * FROM shops WHERE name LIKE ? OR CAST(id AS TEXT) LIKE ?",
+        c.execute("SELECT * FROM shops WHERE name LIKE %s OR CAST(id AS TEXT) LIKE %s",
                   (f"%{query}%", f"%{query}%"))
         results = c.fetchall()
         if results:
@@ -3023,7 +3024,7 @@ async def do_search(message: types.Message, state: FSMContext):
             text = "❌ Topilmadi"
 
     elif stype == "couriers":
-        c.execute("SELECT * FROM couriers WHERE full_name LIKE ? OR phone LIKE ? OR CAST(id AS TEXT) LIKE ? OR CAST(tg_id AS TEXT) LIKE ?",
+        c.execute("SELECT * FROM couriers WHERE full_name LIKE %s OR phone LIKE %s OR CAST(id AS TEXT) LIKE %s OR CAST(tg_id AS TEXT) LIKE %s",
                   (f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"))
         results = c.fetchall()
         if results:
@@ -3057,7 +3058,7 @@ async def orders_by_status(callback: types.CallbackQuery):
     status = callback.data.split("_", 2)[2]
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE status=? ORDER BY created_at DESC LIMIT 30", (status,))
+    c.execute("SELECT * FROM orders WHERE status=%s ORDER BY created_at DESC LIMIT 30", (status,))
     orders = c.fetchall()
     conn.close()
 
@@ -3116,9 +3117,9 @@ async def finance_detail(callback: types.CallbackQuery):
     pay_type = "Karta" if callback.data == "finance_card" else "Naqd"
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id WHERE payment_type=? AND status='delivered' ORDER BY created_at DESC LIMIT 30", (pay_type,))
+    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id WHERE payment_type=%s AND status='delivered' ORDER BY created_at DESC LIMIT 30", (pay_type,))
     orders = c.fetchall()
-    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE payment_type=? AND status='delivered'", (pay_type,))
+    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE payment_type=%s AND status='delivered'", (pay_type,))
     summary = c.fetchone()
     conn.close()
 
@@ -3213,7 +3214,7 @@ async def promo_detail(callback: types.CallbackQuery):
     promo_id = int(callback.data.split("_")[1])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM promo_codes WHERE id=?", (promo_id,))
+    c.execute("SELECT * FROM promo_codes WHERE id=%s", (promo_id,))
     p = c.fetchone()
     conn.close()
 
@@ -3238,7 +3239,7 @@ async def delete_promo(callback: types.CallbackQuery):
     promo_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("DELETE FROM promo_codes WHERE id=?", (promo_id,))
+    c.execute("DELETE FROM promo_codes WHERE id=%s", (promo_id,))
     conn.commit()
     conn.close()
     await callback.message.answer("🗑️ O'chirildi")
@@ -3314,7 +3315,7 @@ async def promo_max_uses(message: types.Message, state: FSMContext):
     conn = get_db()
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO promo_codes (id, code, discount_type, discount_value, min_sum, days, max_uses, created_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT INTO promo_codes (id, code, discount_type, discount_value, min_sum, days, max_uses, created_at, expires_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
                   (uid, data['code'], data['discount_type'], data['discount_value'],
                    data['min_sum'], data['days'], max_uses, now_str(), expires_at))
         conn.commit()
@@ -3352,7 +3353,7 @@ async def live_monitoring(message: types.Message):
     closed_shops = c.fetchone()['cnt']
 
     one_hour_ago = (datetime.now() - timedelta(hours=1)).strftime("%d.%m.%Y %H:%M")
-    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE created_at >= ?", (one_hour_ago,))
+    c.execute("SELECT COUNT(*) as cnt FROM orders WHERE created_at >= %s", (one_hour_ago,))
     last_hour = c.fetchone()['cnt']
 
     c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='pending' AND courier_tg_id IS NULL")
@@ -3405,7 +3406,7 @@ async def view_chat_detail(callback: types.CallbackQuery):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM chats WHERE (from_tg_id=? AND to_tg_id=?) OR (from_tg_id=? AND to_tg_id=?) ORDER BY created_at ASC LIMIT 30",
+    c.execute("SELECT * FROM chats WHERE (from_tg_id=%s AND to_tg_id=%s) OR (from_tg_id=%s AND to_tg_id=%s) ORDER BY created_at ASC LIMIT 30",
               (from_id, to_id, to_id, from_id))
     messages = c.fetchall()
     conn.close()
@@ -3459,7 +3460,7 @@ async def add_admin_save(message: types.Message, state: FSMContext):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO admins (tg_id, added_at) VALUES (?,?)", (tg_id, now_str()))
+    c.execute("INSERT INTO admins (tg_id, added_at) VALUES (%s,%s) ON CONFLICT (tg_id) DO NOTHING", (tg_id, now_str()))
     conn.commit()
     conn.close()
 
@@ -3525,9 +3526,9 @@ async def weekly_report(message: types.Message):
     week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered' AND created_at >= ?", (week_ago,))
+    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered' AND created_at >= %s", (week_ago,))
     result = c.fetchone()
-    c.execute("SELECT COUNT(*) as cnt FROM users WHERE registered_at >= ?", (week_ago,))
+    c.execute("SELECT COUNT(*) as cnt FROM users WHERE registered_at >= %s", (week_ago,))
     new_users = c.fetchone()['cnt']
     conn.close()
 
@@ -3544,7 +3545,7 @@ async def phone_order_for_shop(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[2])
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT phone FROM shops WHERE id=?", (shop_id,))
+    c.execute("SELECT phone FROM shops WHERE id=%s", (shop_id,))
     shop = c.fetchone()
     conn.close()
 
@@ -3568,7 +3569,7 @@ async def check_vacations():
             try:
                 vac_date = datetime.strptime(shop['vacation_until'], "%d.%m.%Y").date()
                 if vac_date < date.today():
-                    c.execute("UPDATE shops SET vacation_until=NULL, is_open=1 WHERE id=?", (shop['id'],))
+                    c.execute("UPDATE shops SET vacation_until=NULL, is_open=1 WHERE id=%s", (shop['id'],))
                     try:
                         await bot.send_message(shop['owner_tg_id'],
                                                f"🏖️ Ta'tilingiz tugadi! {shop['name']} do'koni ishga tushdi!")

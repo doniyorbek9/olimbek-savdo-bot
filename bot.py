@@ -39,6 +39,7 @@ from PIL import Image, ImageDraw, ImageFont
 # ===================== CONFIG =====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_IDS = [7948989650]
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 logging.basicConfig(level=logging.INFO)
@@ -124,6 +125,11 @@ class ExcelUploadState(StatesGroup):
 class ExcelUpdateState(StatesGroup):
     waiting = State()
 
+class AIOrderState(StatesGroup):
+    choosing_shop = State()
+    typing = State()
+    confirming = State()
+
 class AddPhoneState(StatesGroup):
     phone = State()
 
@@ -147,6 +153,10 @@ class EditCourierState(StatesGroup):
     field = State()
     value = State()
     courier_id = State()
+
+class AdminUserChatState(StatesGroup):
+    chatting = State()
+    user_tg_id = State()
 
 # ===================== DATABASE =====================
 def get_db():
@@ -188,8 +198,14 @@ def init_db():
         shop_id BIGINT,
         name TEXT,
         price REAL,
+        is_available INTEGER DEFAULT 1,
         created_at TEXT
     )''')
+    # Migration: eski products jadvaliga is_available ustunini qo'shish
+    try:
+        c.execute("ALTER TABLE products ADD COLUMN IF NOT EXISTS is_available INTEGER DEFAULT 1")
+    except:
+        pass
 
     c.execute('''CREATE TABLE IF NOT EXISTS couriers (
         id BIGINT PRIMARY KEY,
@@ -222,8 +238,13 @@ def init_db():
         delivered_at TEXT,
         check_photo TEXT,
         promo_code TEXT,
-        discount REAL DEFAULT 0
+        discount REAL DEFAULT 0,
+        source TEXT DEFAULT 'normal'
     )''')
+    try:
+        c.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'normal'")
+    except:
+        pass
 
     c.execute('''CREATE TABLE IF NOT EXISTS promo_codes (
         id BIGINT PRIMARY KEY,
@@ -279,6 +300,14 @@ def init_db():
         order_id TEXT
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS admin_logs (
+        id BIGSERIAL PRIMARY KEY,
+        admin_tg_id BIGINT,
+        action TEXT,
+        details TEXT,
+        created_at TEXT
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -287,6 +316,17 @@ def gen_id():
 
 def now_str():
     return datetime.now().strftime("%d.%m.%Y %H:%M")
+
+def log_admin_action(admin_tg_id, action, details=""):
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("INSERT INTO admin_logs (admin_tg_id, action, details, created_at) VALUES (%s,%s,%s,%s)",
+                  (admin_tg_id, action, details, now_str()))
+        conn.commit()
+        conn.close()
+    except:
+        pass
 
 def is_admin(tg_id):
     if tg_id in ADMIN_IDS:
@@ -352,7 +392,8 @@ def user_main_kb():
     kb.button(text="👤 Profil")
     kb.button(text="💬 Do'kon egasi")
     kb.button(text="💬 Admin")
-    kb.adjust(2, 1, 2)
+    kb.button(text="🤖 AI buyurtma")
+    kb.adjust(2, 1, 2, 1)
     return kb.as_markup(resize_keyboard=True)
 
 def shop_main_kb():
@@ -396,8 +437,9 @@ def admin_main_kb():
     kb.button(text="💬 Chatlar")
     kb.button(text="🚫 Bloklangan")
     kb.button(text="📈 Haftalik hisobot")
-    kb.button(text="📦 Buyurtmalar (to'liq)")
+    kb.button(text="🔐 Admin loglari")
     kb.button(text="🗑️ Bot ma'lumotlari")
+    kb.button(text="🏆 Top mijozlar")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
@@ -1072,9 +1114,11 @@ async def order_check_photo_doc(message: types.Message, state: FSMContext):
 async def order_check_photo_wrong(message: types.Message, state: FSMContext):
     await message.answer("📸 Iltimos, chek rasmini yuboring (rasm ko'rinishida)")
 
-async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
+async def finalize_order(message, state, tg_id, payment_type, check_photo_id, source='normal'):
     try:
         data = await state.get_data()
+        # State dan source olish (AI buyurtma bo'lsa)
+        source = data.get('order_source', source)
         cart_data = cart_get(tg_id)
         items = cart_data.get("items", {})
         shop_id = cart_data.get("shop_id")
@@ -1095,11 +1139,11 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
         c = conn.cursor()
         order_id = gen_id()
         c.execute('''INSERT INTO orders (id, order_uid, user_tg_id, shop_id, products, total_sum, address,
-                  latitude, longitude, payment_type, status, created_at, check_photo, promo_code, discount)
-                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
+                  latitude, longitude, payment_type, status, created_at, check_photo, promo_code, discount, source)
+                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)''',
                   (order_id, order_uid, tg_id, shop_id, products_str, total,
                    data.get('address', ''), data.get('lat'), data.get('lon'),
-                   payment_type, 'pending', now_str(), check_photo_id, promo, discount))
+                   payment_type, 'pending', now_str(), check_photo_id, promo, discount, source))
 
         if promo:
             c.execute("UPDATE promo_codes SET used_count=used_count+1 WHERE code=%s", (promo,))
@@ -1139,7 +1183,8 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id):
             kb.button(text="❌ Rad etish", callback_data=f"reject_order_{order_uid}")
             kb.adjust(2)
 
-            admin_text = (f"🆕 Yangi buyurtma #{order_uid}\n\n"
+            source_badge = "🤖 AI orqali buyurtma\n\n" if source == "ai" else ""
+            admin_text = (source_badge + f"🆕 Yangi buyurtma #{order_uid}\n\n"
                           f"👤 Mijoz: {user['full_name']}\n"
                           f"📱 Tel: {user['phone']}\n"
                           f"🆔 TG ID: {tg_id}\n"
@@ -1697,7 +1742,7 @@ async def products_menu(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM products WHERE shop_id=%s", (shop['id'],))
+    c.execute("SELECT * FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1)", (shop['id'],))
     prods = c.fetchall()
     conn.close()
 
@@ -1756,13 +1801,19 @@ async def edit_product(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Topilmadi")
         return
 
+    avail = prod['is_available'] if 'is_available' in prod.keys() else 1
+    status_text = "✅ Mavjud" if avail else "❌ Tugagan"
+    toggle_text = "❌ Tugadi deb belgilash" if avail else "✅ Mavjud deb belgilash"
     kb = InlineKeyboardBuilder()
     kb.button(text="✏️ Nomini o'zgartir", callback_data=f"ep_name_{prod_id}")
     kb.button(text="💰 Narxini o'zgartir", callback_data=f"ep_price_{prod_id}")
+    kb.button(text=toggle_text, callback_data=f"ep_toggle_{prod_id}")
     kb.button(text="🗑️ O'chirish", callback_data=f"ep_del_{prod_id}")
     kb.adjust(1)
-    await callback.message.answer(f"📦 {prod['name']} — {prod['price']:,.0f} so'm\nNimani o'zgartirish?",
-                                  reply_markup=kb.as_markup())
+    await callback.message.answer(
+        f"📦 {prod['name']} — {prod['price']:,.0f} so'm\nHolat: {status_text}\nNimani o'zgartirish?",
+        reply_markup=kb.as_markup()
+    )
 
 @dp.callback_query(F.data.startswith("ep_name_") | F.data.startswith("ep_price_"))
 async def edit_prod_field(callback: types.CallbackQuery, state: FSMContext):
@@ -1802,6 +1853,25 @@ async def delete_product(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     await callback.message.answer("🗑️ Mahsulot o'chirildi")
+
+@dp.callback_query(F.data.startswith("ep_toggle_"))
+async def toggle_product_availability(callback: types.CallbackQuery):
+    prod_id = int(callback.data.split("_")[2])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, is_available FROM products WHERE id=%s", (prod_id,))
+    prod = c.fetchone()
+    if not prod:
+        await callback.answer("Topilmadi")
+        conn.close()
+        return
+    new_val = 0 if (prod['is_available'] if 'is_available' in prod.keys() else 1) else 1
+    c.execute("UPDATE products SET is_available=%s WHERE id=%s", (new_val, prod_id))
+    conn.commit()
+    conn.close()
+    status = "✅ Mavjud" if new_val else "❌ Tugagan"
+    await callback.message.answer(f"'{prod['name']}' holati: {status}")
+    await callback.answer()
 
 # --- EXCEL UPLOAD ---
 @dp.callback_query(F.data.startswith("excel_upload_"))
@@ -2269,13 +2339,10 @@ async def start_chat_with_shop(callback: types.CallbackQuery, state: FSMContext)
     user_name = user["full_name"] if user else str(user_tg)
     await notify_partner_chat_started(shop_tg, user_tg, "Mijoz " + user_name + " (Buyurtma #" + order_uid + ")", "shop_user", order_uid)
 
-async def _send_chat_message(message, state):
-    """Umumiy chat xabar yuborish logikasi."""
+@dp.message(ChatState.chatting)
+async def chat_message(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
     text = message.text or ""
-
-    if not text:
-        return False
 
     # Tugatish
     if text == "🔴 Chatni tugatish":
@@ -2290,16 +2357,17 @@ async def _send_chat_message(message, state):
                 pass
         await state.clear()
         await message.answer("✅ Chat yakunlandi.", reply_markup=main_menu_kb(tg_id))
-        return True
+        return
 
     chat = chat_get_session(tg_id)
     if not chat:
         await state.clear()
         await message.answer("Chat topilmadi.", reply_markup=main_menu_kb(tg_id))
-        return True
+        return
 
     partner = chat["partner"]
 
+    # Kim yozayotganini aniqlash
     role = user_role(tg_id)
     if role == "courier":
         courier = get_courier_by_tg(tg_id)
@@ -2322,24 +2390,15 @@ async def _send_chat_message(message, state):
     except Exception as e:
         logger.error("Chat send error: " + str(e))
         await message.answer("❌ Xabar yuborilmadi. Partner botni bloklagan bo'lishi mumkin.")
-        return True
+        return
 
-    try:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
-            (tg_id, partner, text, chat["type"], now_str(), chat.get("order", ""))
-        )
-        conn.commit()
-        conn.close()
-    except Exception as db_err:
-        logger.error(f"Chat DB save error: {db_err}")
-    return False
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at, order_id) VALUES (%s,%s,%s,%s,%s,%s)",
+              (tg_id, partner, text, chat["type"], now_str(), chat.get("order", "")))
+    conn.commit()
+    conn.close()
 
-@dp.message(ChatState.chatting)
-async def chat_message(message: types.Message, state: FSMContext):
-    await _send_chat_message(message, state)
 @dp.callback_query(F.data == "end_chat")
 async def end_chat(callback: types.CallbackQuery, state: FSMContext):
     tg_id = callback.from_user.id
@@ -2386,28 +2445,26 @@ async def reply_chat_start(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Xato ID")
         return
     tg_id = callback.from_user.id
-    # Ikki tomonlama session o'rnatish
-    existing_partner = chat_get_session(partner_tg_id)
-    order_id = existing_partner.get("order", "") if existing_partner else ""
 
-    # Javob beruvchi sessiyasi (har doim yangilash)
-    chat_set(tg_id, partner_tg_id, chat_type, order_id)
-    # Partner sessiyasi yo'q bo'lsa o'rnatish
-    if not existing_partner:
-        chat_set(partner_tg_id, tg_id, chat_type, order_id)
+    # Faqat javob beruvchi (masalan do'kon egasi) sessionini o'rnatamiz
+    # Partner (mijoz) sessionini buzmaslik uchun mavjud sessiyasini tekshiramiz
+    existing_partner = chat_get_session(partner_tg_id)
+    if existing_partner:
+        # Partner sessiyasi bor, uning partner_id sini ishlatamiz
+        chat_set(tg_id, partner_tg_id, chat_type, existing_partner.get("order", ""))
+    else:
+        chat_set(tg_id, partner_tg_id, chat_type, "")
+        # Partner sessiyasi yo'q, o'rnatamiz
+        chat_set(partner_tg_id, tg_id, chat_type, "")
 
     await state.set_state(ChatState.chatting)
-    await callback.answer()
     await callback.message.answer(
         "💬 Chat ochildi! Yozing.\nTugatish uchun pastdagi tugmani bosing:",
         reply_markup=chat_end_kb()
     )
+    await callback.answer()
     try:
-        await bot.send_message(
-            partner_tg_id,
-            "💬 Javob keldi! Endi yozishingiz mumkin.",
-            reply_markup=chat_end_kb()
-        )
+        await bot.send_message(partner_tg_id, "💬 Javob keldi! Endi yozishingiz mumkin.")
     except:
         pass
 
@@ -2485,6 +2542,256 @@ async def user_or_courier_chat_admin(message: types.Message, state: FSMContext):
         user = get_user(tg_id)
         label = "Mijoz " + (user["full_name"] if user else str(tg_id))
     await notify_partner_chat_started(admin_id, tg_id, label, "admin_user")
+
+
+# --- TOP MIJOZLAR ---
+@dp.message(F.text == "🏆 Top mijozlar")
+async def top_buyers(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT o.user_tg_id, u.full_name, u.phone,
+               COUNT(o.id) as order_count,
+               SUM(o.total_sum) as total_spent
+        FROM orders o
+        LEFT JOIN users u ON u.tg_id = o.user_tg_id
+        WHERE o.status = 'delivered'
+        GROUP BY o.user_tg_id, u.full_name, u.phone
+        ORDER BY order_count DESC
+        LIMIT 10
+    """)
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        await message.answer("Hali yetkazilgan buyurtma yo'q")
+        return
+
+    text = "🏆 <b>Eng ko'p buyurtma qilgan mijozlar:</b>\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for i, r in enumerate(rows):
+        medal = medals[i] if i < 3 else f"{i+1}."
+        name = r['full_name'] or "Noma'lum"
+        phone = r['phone'] or ""
+        spent = r['total_spent'] or 0
+        text += f"{medal} {name} ({phone})\n"
+        text += f"   📦 {r['order_count']} ta buyurtma | 💰 {spent:,.0f} so'm\n\n"
+
+    await message.answer(text, parse_mode="HTML")
+
+# ===================== AI BUYURTMA (GROQ) =====================
+import urllib.request
+import json as json_lib
+
+async def groq_ask(prompt: str) -> str:
+    if not GROQ_API_KEY:
+        return '{"error": "GROQ_API_KEY sozlanmagan"}'
+    data = json_lib.dumps({
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 1000,
+        "temperature": 0.3
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + GROQ_API_KEY
+        },
+        method="POST"
+    )
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        def do_request():
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return json_lib.loads(resp.read().decode())
+        result = await loop.run_in_executor(None, do_request)
+        return result["choices"][0]["message"]["content"]
+    except Exception as e:
+        return '{"error": "' + str(e) + '"}'
+
+@dp.message(F.text == "🤖 AI buyurtma")
+async def ai_order_start(message: types.Message, state: FSMContext):
+    tg_id = message.from_user.id
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE is_open=1")
+    shops = c.fetchall()
+    conn.close()
+
+    if not shops:
+        await message.answer("Hozir ochiq do'kon yo'q")
+        return
+
+    kb = InlineKeyboardBuilder()
+    for s in shops:
+        kb.button(text=s["name"], callback_data="ai_shop_" + str(s["id"]))
+    kb.adjust(1)
+    await message.answer("🏪 Qaysi do'kondan buyurtma bermoqchisiz?", reply_markup=kb.as_markup())
+    await state.set_state(AIOrderState.choosing_shop)
+
+@dp.callback_query(F.data.startswith("ai_shop_"), AIOrderState.choosing_shop)
+async def ai_order_shop_selected(callback: types.CallbackQuery, state: FSMContext):
+    shop_id = int(callback.data.split("_")[2])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+    c.execute("SELECT name, price FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1)", (shop_id,))
+    products = c.fetchall()
+    conn.close()
+
+    if not products:
+        await callback.message.answer("Bu do'konda mahsulot yo'q")
+        await state.clear()
+        return
+
+    menu_text = ", ".join([p["name"] + " (" + str(int(p["price"])) + " so'm)" for p in products])
+    await state.update_data(shop_id=shop_id, shop_name=shop["name"], menu_text=menu_text)
+
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="❌ Bekor qilish")
+    await callback.message.answer(
+        "🤖 <b>" + shop["name"] + "</b> menyusi:\n\n" + menu_text + "\n\n"
+        "Xohlaganingizni yozing. Masalan: <i>cola 2 ta, non 1 ta</i>",
+        parse_mode="HTML",
+        reply_markup=kb.as_markup(resize_keyboard=True)
+    )
+    await state.set_state(AIOrderState.typing)
+    await callback.answer()
+
+@dp.message(AIOrderState.typing)
+async def ai_order_process(message: types.Message, state: FSMContext):
+    if message.text == "❌ Bekor qilish":
+        await state.clear()
+        await message.answer("Bekor qilindi", reply_markup=user_main_kb())
+        return
+
+    data = await state.get_data()
+    menu_text = data["menu_text"]
+    shop_name = data["shop_name"]
+
+    await message.answer("🤖 Tahlil qilinmoqda...")
+
+    prompt = """Siz do'kon botisiz. Quyidagi menyudan mijoz buyurtmasini aniqlang.
+
+Menyu: """ + menu_text + """
+
+Mijoz yozdi: """" + message.text + """"
+
+Faqat JSON qaytaring, boshqa hech narsa yozmang:
+{
+  "found": [
+    {"name": "Mahsulot nomi (menyudagi aniq nom)", "qty": 1, "price": 0},
+    ...
+  ],
+  "not_found": ["topilmagan mahsulot nomlari"],
+  "clarify": "Agar noaniq bo'lsa savol, aks holda null"
+}"""
+
+    response = await groq_ask(prompt)
+
+    try:
+        clean = response.strip()
+        if "```" in clean:
+            clean = clean.split("```")[1]
+            if clean.startswith("json"):
+                clean = clean[4:]
+        parsed = json_lib.loads(clean)
+    except:
+        await message.answer("🤖 Tushunmadim. Qaytadan yozing. Masalan: cola 2 ta, non 1 ta")
+        return
+
+    if parsed.get("clarify"):
+        await message.answer("🤖 " + parsed["clarify"])
+        return
+
+    found = parsed.get("found", [])
+    not_found = parsed.get("not_found", [])
+
+    if not found:
+        await message.answer("❌ Hech qanday mahsulot topilmadi. Qaytadan yozing.")
+        return
+
+    # Narxlarni menyudan olish (AI ni ishonmaymiz narxlarga)
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, price FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1)", (data["shop_id"],))
+    db_products = {p["name"].lower(): p for p in c.fetchall()}
+    conn.close()
+
+    confirmed_items = []
+    total = 0
+    for item in found:
+        name_lower = item["name"].lower()
+        # Exact yoki yaqin nom topish
+        matched = None
+        for db_name, db_prod in db_products.items():
+            if name_lower in db_name or db_name in name_lower:
+                matched = db_prod
+                break
+        if matched:
+            qty = max(1, int(item.get("qty", 1)))
+            price = matched["price"]
+            confirmed_items.append({"name": matched["name"], "qty": qty, "price": price})
+            total += price * qty
+
+    if not confirmed_items:
+        await message.answer("❌ Mahsulotlar menyuda topilmadi. Qaytadan yozing.")
+        return
+
+    text = "🛒 <b>Buyurtmangiz:</b>\n\n"
+    for item in confirmed_items:
+        text += "• " + item["name"] + " × " + str(item["qty"]) + " — " + "{:,.0f}".format(item["price"] * item["qty"]) + " so'm\n"
+    if not_found:
+        text += "\n⚠️ Topilmadi: " + ", ".join(not_found)
+    text += "\n\n💰 <b>Jami: " + "{:,.0f}".format(total) + " so'm</b>\n\nTasdiqlaysizmi?"
+
+    await state.update_data(ai_items=confirmed_items, ai_total=total)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Ha, buyurtma berish", callback_data="ai_confirm_yes")
+    kb.button(text="❌ Yo'q, qaytadan", callback_data="ai_confirm_no")
+    kb.adjust(1)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb.as_markup())
+    await state.set_state(AIOrderState.confirming)
+
+@dp.callback_query(F.data == "ai_confirm_no", AIOrderState.confirming)
+async def ai_confirm_no(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(AIOrderState.typing)
+    kb = ReplyKeyboardBuilder()
+    kb.button(text="❌ Bekor qilish")
+    await callback.message.answer("Qaytadan yozing:", reply_markup=kb.as_markup(resize_keyboard=True))
+    await callback.answer()
+
+@dp.callback_query(F.data == "ai_confirm_yes", AIOrderState.confirming)
+async def ai_confirm_yes(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    tg_id = callback.from_user.id
+    items = data["ai_items"]
+    total = data["ai_total"]
+    shop_id = data["shop_id"]
+
+    # Savatga qo'shish
+    cart_items = json_lib.dumps([{"id": 0, "name": i["name"], "price": i["price"], "qty": i["qty"]} for i in items])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO carts (tg_id, shop_id, items) VALUES (%s,%s,%s) ON CONFLICT (tg_id) DO UPDATE SET shop_id=excluded.shop_id, items=excluded.items",
+              (tg_id, shop_id, cart_items))
+    conn.commit()
+    conn.close()
+
+    await state.update_data(order_source="ai")
+    await callback.message.answer(
+        "✅ Savatga qo'shildi! Endi manzilni kiriting:",
+        reply_markup=ReplyKeyboardRemove()
+    )
+    await callback.answer()
+    await state.set_state(OrderState.address)
 
 # ===================== ADMIN PANEL =====================
 
@@ -2588,6 +2895,7 @@ async def admin_confirm_delete_shop(callback: types.CallbackQuery):
         except:
             pass
 
+    log_admin_action(callback.from_user.id, "Do'kon o'chirildi", f"Do'kon ID: {shop_id}")
     await callback.message.answer("✅ Do'kon o'chirildi")
 
 @dp.callback_query(F.data.startswith("ashop_percent_"))
@@ -2666,7 +2974,8 @@ async def admin_shop_orders(callback: types.CallbackQuery):
     for o in orders:
         status_map = {"pending": "⏳", "confirmed": "✅", "on_way": "🚗", "delivered": "✅", "rejected": "❌"}
         emoji = status_map.get(o['status'], "❓")
-        kb.button(text=f"{emoji} #{o['order_uid']} {o['created_at']}", callback_data=f"admin_order_{o['order_uid']}")
+        ai_mark = "🤖 " if (o.get("source") or "normal") == "ai" else ""
+        kb.button(text=f"{ai_mark}{emoji} #{o['order_uid']} {o['created_at']}", callback_data=f"admin_order_{o['order_uid']}")
     kb.button(text="⬅️ Orqaga", callback_data=f"admin_shop_{shop_id}")
     kb.adjust(1)
     await callback.message.answer("📦 Buyurtmalar:", reply_markup=kb.as_markup())
@@ -2688,7 +2997,9 @@ async def admin_order_detail(callback: types.CallbackQuery):
     status_map = {"pending": "⏳ Kutilmoqda", "confirmed": "✅ Tasdiqlandi", "on_way": "🚗 Yo'lda",
                   "delivered": "✅ Yetkazildi", "rejected": "❌ Rad etildi"}
 
-    text = (f"📦 #{o['order_uid']}\n"
+    ai_badge = "🤖 AI orqali buyurtma\n" if (o.get("source") or o.get("source", "normal")) == "ai" else ""
+    text = (ai_badge +
+            f"📦 #{o['order_uid']}\n"
             f"👤 {user['full_name'] if user else 'Tel buyurtma'}\n"
             f"📱 {user['phone'] if user else ''}\n"
             f"📍 {o['address']}\n"
@@ -2759,6 +3070,7 @@ async def add_shop_name(message: types.Message, state: FSMContext):
         pass
 
     await message.answer(f"✅ Do'kon qo'shildi! ID: {uid}")
+    log_admin_action(message.from_user.id, "Do'kon qo'shdi", f"Do'kon: {message.text}, ID: {uid}")
     await state.clear()
 
 # --- ADMIN USERS ---
@@ -2811,6 +3123,8 @@ async def admin_user_detail(callback: types.CallbackQuery):
         kb.button(text="✅ Blokdan chiqarish", callback_data=f"unblock_user_{tg_id}")
     else:
         kb.button(text="🚫 Bloklash", callback_data=f"block_user_{tg_id}")
+    kb.button(text="💬 Chat boshlash", callback_data=f"admin_chat_user_{tg_id}")
+    kb.adjust(1)
     await callback.message.answer(text, reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data.startswith("block_user_"))
@@ -2821,6 +3135,7 @@ async def block_user(callback: types.CallbackQuery):
     c.execute("UPDATE users SET is_blocked=1 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
+    log_admin_action(callback.from_user.id, "Mijoz bloklandi", f"TG ID: {tg_id}")
     await callback.answer("🚫 Bloklandi")
 
 @dp.callback_query(F.data.startswith("unblock_user_"))
@@ -2831,6 +3146,7 @@ async def unblock_user(callback: types.CallbackQuery):
     c.execute("UPDATE users SET is_blocked=0 WHERE tg_id=%s", (tg_id,))
     conn.commit()
     conn.close()
+    log_admin_action(callback.from_user.id, "Mijoz blokdan chiqarildi", f"TG ID: {tg_id}")
     await callback.answer("✅ Blokdan chiqarildi")
 
 # --- ADMIN COURIERS ---
@@ -3033,6 +3349,8 @@ async def admin_stats(message: types.Message):
     couriers_count = c.fetchone()['cnt']
     c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered'")
     all_orders = c.fetchone()
+    c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE source='ai'")
+    ai_orders = c.fetchone()
     today = datetime.now().strftime("%d.%m.%Y")
     c.execute("SELECT COUNT(*) as cnt, SUM(total_sum) as total FROM orders WHERE status='delivered' AND created_at LIKE %s",
               (f"{today}%",))
@@ -3058,7 +3376,8 @@ async def admin_stats(message: types.Message):
     text += f"🚚 Jami kuryerlar: {couriers_count}\n"
     text += f"📦 Jami buyurtmalar: {all_orders['cnt'] or 0}\n"
     text += f"💰 Jami daromad: {all_orders['total'] or 0:,.0f} so'm\n"
-    text += f"📅 Bugungi daromad: {today_orders['total'] or 0:,.0f} so'm"
+    text += f"📅 Bugungi daromad: {today_orders['total'] or 0:,.0f} so'm\n"
+    text += f"🤖 AI buyurtmalar: {ai_orders['cnt'] or 0} ta ({ai_orders['total'] or 0:,.0f} so'm)"
 
     await message.answer(text)
 
@@ -3216,183 +3535,12 @@ async def orders_by_status(callback: types.CallbackQuery):
 
     kb = InlineKeyboardBuilder()
     for o in orders:
-        kb.button(text=f"#{o['order_uid']} — {o['created_at']}", callback_data=f"admin_order_{o['order_uid']}")
+        ai_mark = "🤖 " if (o.get("source") or "normal") == "ai" else ""
+        kb.button(text=f"{ai_mark}#{o['order_uid']} — {o['created_at']}", callback_data=f"admin_order_{o['order_uid']}")
     kb.adjust(1)
     await callback.message.answer(f"📋 {len(orders)} ta buyurtma:", reply_markup=kb.as_markup())
 
-
-# --- FULL ORDERS LIST ---
-@dp.message(F.text == "📦 Buyurtmalar (to'liq)")
-async def admin_full_orders(message: types.Message):
-    if not is_admin(message.from_user.id):
-        return
-
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        SELECT o.*, s.name as shop_name,
-               u.full_name as user_name
-        FROM orders o
-        LEFT JOIN shops s ON o.shop_id = s.id
-        LEFT JOIN users u ON o.user_tg_id = u.tg_id
-        ORDER BY o.created_at DESC LIMIT 50
-    """)
-    orders = c.fetchall()
-    conn.close()
-
-    if not orders:
-        await message.answer("📦 Hozircha buyurtmalar yo'q")
-        return
-
-    status_emoji = {
-        "pending": "⏳", "confirmed": "✅",
-        "on_way": "🚗", "delivered": "✅", "rejected": "❌"
-    }
-
-    kb = InlineKeyboardBuilder()
-    for o in orders:
-        emoji = status_emoji.get(o["status"], "❓")
-        shop = o["shop_name"] or "?"
-        user_n = o["user_name"] or "Noma'lum"
-        # Ko'rinish: emoji Ism | Do'kon nomi | #ID
-        label = f"{emoji} {user_n} | {shop} | #{o['order_uid']}"
-        kb.button(text=label[:64], callback_data="forder_" + str(o["order_uid"]))
-    kb.adjust(1)
-    await message.answer(
-        f"📦 Oxirgi {len(orders)} ta buyurtma:",
-        reply_markup=kb.as_markup()
-    )
-
-
-@dp.callback_query(F.data.startswith("forder_"))
-async def full_order_detail(callback: types.CallbackQuery):
-    await callback.answer()
-    order_uid = callback.data[7:]
-
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        SELECT o.*, s.name as shop_name, s.card_number, s.phone as shop_phone
-        FROM orders o
-        LEFT JOIN shops s ON o.shop_id = s.id
-        WHERE o.order_uid = %s
-    """, (order_uid,))
-    o = c.fetchone()
-
-    if not o:
-        await callback.message.answer("Buyurtma topilmadi")
-        conn.close()
-        return
-
-    c.execute("SELECT * FROM users WHERE tg_id = %s", (o["user_tg_id"],))
-    user = c.fetchone()
-
-    courier = None
-    if o["courier_tg_id"]:
-        c.execute("SELECT * FROM couriers WHERE tg_id = %s", (o["courier_tg_id"],))
-        courier = c.fetchone()
-    conn.close()
-
-    status_map = {
-        "pending":   "Kutilmoqda",
-        "confirmed": "Tasdiqlandi",
-        "on_way":    "Yo'lda",
-        "delivered": "Yetkazildi",
-        "rejected":  "Rad etildi"
-    }
-
-    if user:
-        mijoz = user["full_name"] + " | " + str(user["phone"]) + " | TG: " + str(o["user_tg_id"])
-    else:
-        mijoz = "Tel buyurtma | TG: " + str(o["user_tg_id"])
-
-    if courier:
-        kuryer = courier["full_name"] + " | " + str(courier["phone"]) + " | TG: " + str(o["courier_tg_id"])
-    elif o["courier_tg_id"]:
-        kuryer = "TG: " + str(o["courier_tg_id"])
-    else:
-        kuryer = "Tayinlanmagan"
-
-    promo_text = ""
-    if o["promo_code"]:
-        disc = "{:,.0f}".format(o["discount"])
-        promo_text = "Promo: " + str(o["promo_code"]) + " (-" + disc + " so'm)\n"
-
-    products_fmt = o["products"].replace("|", "\n  - ")
-    total = "{:,.0f}".format(o["total_sum"])
-    holat = status_map.get(o["status"], o["status"])
-
-    text = (
-        "BUYURTMA #" + str(o["order_uid"]) + "\n"
-        + "-" * 28 + "\n"
-        + "Holat: " + holat + "\n\n"
-        + "Dokon: " + str(o["shop_name"] or "?") + "\n"
-        + "Mijoz: " + mijoz + "\n"
-        + "Kuryer: " + kuryer + "\n\n"
-        + "Mahsulotlar:\n  - " + products_fmt + "\n\n"
-        + "Jami: " + total + " so'm\n"
-        + promo_text
-        + "Tolov: " + str(o["payment_type"]) + "\n"
-        + "Manzil: " + str(o["address"]) + "\n\n"
-        + "Yaratilgan: " + str(o["created_at"]) + "\n"
-        + "Tasdiqlangan: " + str(o["confirmed_at"] or "-") + "\n"
-        + "Yetkazilgan: " + str(o["delivered_at"] or "-") + "\n"
-    )
-
-    del_kb = InlineKeyboardBuilder()
-    del_kb.button(text="🗑️ Buyurtmani o'chirish", callback_data="del_order_" + str(o["order_uid"]))
-    del_kb.adjust(1)
-
-    # Chek rasm mavjud bo'lsa — ma'lumotlarni caption ga, rasmi birinchi
-    if o["check_photo"]:
-        try:
-            await callback.message.answer_photo(
-                o["check_photo"],
-                caption=text[:1024],  # Telegram caption limit 1024 belgi
-                reply_markup=del_kb.as_markup()
-            )
-        except Exception as e:
-            # Rasm yuklanmasa oddiy text yuborish
-            await callback.message.answer(text, reply_markup=del_kb.as_markup())
-            await callback.message.answer("Chek yuklanmadi: " + str(e))
-    else:
-        await callback.message.answer(text, reply_markup=del_kb.as_markup())
-
-
-@dp.callback_query(F.data.startswith("del_order_") & ~F.data.startswith("del_order_yes_") & ~F.data.startswith("del_order_cancel"))
-async def delete_order_confirm(callback: types.CallbackQuery):
-    await callback.answer()
-    order_uid = callback.data[10:]
-    kb = InlineKeyboardBuilder()
-    kb.button(text="Ha, ochirish", callback_data="del_order_yes_" + order_uid)
-    kb.button(text="Bekor qilish", callback_data="del_order_cancel")
-    kb.adjust(2)
-    await callback.message.answer(
-        "#" + order_uid + " buyurtmani ochirasizmi? Bu amalni ortga qaytarib bolmaydi!",
-        reply_markup=kb.as_markup()
-    )
-
-
-@dp.callback_query(F.data.startswith("del_order_yes_"))
-async def delete_order_execute(callback: types.CallbackQuery):
-    await callback.answer()
-    order_uid = callback.data[14:]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM orders WHERE order_uid = %s", (order_uid,))
-    conn.commit()
-    conn.close()
-    await callback.message.answer("#" + order_uid + " buyurtma ochirildi.")
-
-
-@dp.callback_query(F.data == "del_order_cancel")
-async def delete_order_cancel(callback: types.CallbackQuery):
-    await callback.answer("Bekor qilindi")
-    await callback.message.delete()
-
-
-
-# --- PROBLEMATIC ORDERS ---
+# --- PROBLEMATIC ORDERS (ENHANCED with 10min alert) ---
 @dp.message(F.text == "⚠️ Muammoli")
 async def problematic_orders(message: types.Message):
     if not is_admin(message.from_user.id):
@@ -3400,7 +3548,7 @@ async def problematic_orders(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE status='pending' ORDER BY created_at ASC LIMIT 20")
+    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id WHERE orders.status='pending' ORDER BY orders.created_at ASC LIMIT 20")
     pending = c.fetchall()
     c.execute("SELECT * FROM orders WHERE courier_tg_id IS NULL AND status='confirmed'")
     no_courier = c.fetchall()
@@ -3414,11 +3562,90 @@ async def problematic_orders(message: types.Message):
     text += f"❌ Rad etilgan: {len(rejected)} ta\n\n"
 
     if pending:
-        text += "⏳ Eng eski kutilayotganlar:\n"
-        for o in pending[:5]:
-            text += f"  #{o['order_uid']} — {o['created_at']}\n"
+        text += "⏳ Kutilayotgan buyurtmalar:\n"
+        for o in pending[:10]:
+            try:
+                created = datetime.strptime(o['created_at'], "%d.%m.%Y %H:%M")
+                wait_min = int((datetime.now() - created).total_seconds() / 60)
+                warn = " 🔴" if wait_min >= 10 else ""
+                text += f"  #{o['order_uid']} | {o['shop_name'] or '?'} | {wait_min} daqiqa{warn}\n"
+            except:
+                text += f"  #{o['order_uid']} | {o['created_at']}\n"
 
     await message.answer(text)
+
+
+# --- STUCK ORDER CHECKER (10 min alert) ---
+async def check_stuck_orders():
+    while True:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT orders.*, shops.name as shop_name, shops.owner_tg_id FROM orders LEFT JOIN shops ON orders.shop_id=shops.id WHERE orders.status='pending'")
+            pending = c.fetchall()
+            conn.close()
+
+            for o in pending:
+                try:
+                    created = datetime.strptime(o['created_at'], "%d.%m.%Y %H:%M")
+                    wait_min = int((datetime.now() - created).total_seconds() / 60)
+                    if wait_min == 10:
+                        # Admin ga xabar
+                        conn2 = get_db()
+                        c2 = conn2.cursor()
+                        c2.execute("SELECT tg_id FROM users WHERE tg_id=%s", (o['user_tg_id'],))
+                        user = c2.fetchone()
+                        conn2.close()
+
+                        alert_text = (
+                            f"🔴 MUAMMOLI BUYURTMA — 10 daqiqa o'tdi!\n\n"
+                            f"📦 Buyurtma: #{o['order_uid']}\n"
+                            f"🏪 Do'kon: {o['shop_name'] or 'Noma\'lum'}\n"
+                            f"📅 Vaqt: {o['created_at']}\n"
+                            f"💰 Summa: {o['total_sum']:,.0f} so'm\n"
+                            f"🛍️ Mahsulot: {o['products']}\n"
+                            f"📍 Manzil: {o['address']}\n"
+                            f"👤 Mijoz TG: {o['user_tg_id']}\n"
+                            f"💳 To'lov: {o['payment_type']}\n"
+                            f"📊 Holat: ⏳ Kutilmoqda"
+                        )
+                        for admin_id in ADMIN_IDS:
+                            try:
+                                await bot.send_message(admin_id, alert_text)
+                            except:
+                                pass
+                except:
+                    pass
+        except:
+            pass
+        await asyncio.sleep(60)
+
+
+# --- USER ORDER TIMEOUT APOLOGY (10 min) ---
+async def check_user_order_timeout():
+    while True:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT * FROM orders WHERE status='pending' AND user_tg_id != 0")
+            pending = c.fetchall()
+            conn.close()
+
+            for o in pending:
+                try:
+                    created = datetime.strptime(o['created_at'], "%d.%m.%Y %H:%M")
+                    wait_min = int((datetime.now() - created).total_seconds() / 60)
+                    if wait_min == 10:
+                        await bot.send_message(
+                            o['user_tg_id'],
+                            f"😔 Kechirasiz, #{o['order_uid']} buyurtmangiz hali tasdiqlanmadi.\n"
+                            f"Bu masalani bosh admin ko'rib chiqmoqda. Tez orada hal qilinadi! 🙏"
+                        )
+                except:
+                    pass
+        except:
+            pass
+        await asyncio.sleep(60)
 
 # --- FINANCE ---
 @dp.message(F.text == "💰 Moliya")
@@ -3452,60 +3679,251 @@ async def finance_detail(callback: types.CallbackQuery):
 
     await callback.message.answer(text)
 
-# --- EXCEL EXPORT ---
+# --- EXCEL EXPORT (TO'LIQ) ---
 @dp.message(F.text == "📥 Excel eksport")
 async def excel_export(message: types.Message):
     if not is_admin(message.from_user.id):
         return
 
+    log_admin_action(message.from_user.id, "Excel eksport yukladi")
+
+    await message.answer("⏳ Excel fayl tayyorlanmoqda...")
+
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id ORDER BY created_at DESC")
+
+    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id ORDER BY orders.created_at DESC")
     orders = c.fetchall()
-    c.execute("SELECT * FROM users")
+
+    c.execute("SELECT * FROM users ORDER BY registered_at DESC")
     users = c.fetchall()
+
+    c.execute("SELECT couriers.*, shops.name as shop_name FROM couriers LEFT JOIN shops ON couriers.shop_id=shops.id ORDER BY registered_at DESC")
+    couriers = c.fetchall()
+
+    c.execute("SELECT * FROM shops ORDER BY created_at DESC")
+    shops = c.fetchall()
+
+    c.execute("SELECT chats.*, u1.full_name as from_name, u2.full_name as to_name FROM chats LEFT JOIN users u1 ON chats.from_tg_id=u1.tg_id LEFT JOIN users u2 ON chats.to_tg_id=u2.tg_id ORDER BY created_at DESC LIMIT 500")
+    chats = c.fetchall()
+
+    c.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 500")
+    admin_logs = c.fetchall()
+
     conn.close()
 
     wb = openpyxl.Workbook()
 
-    # Orders sheet
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill("solid", fgColor="2E86AB")
+    center = Alignment(horizontal="center", vertical="center")
+
+    def style_header(ws, headers):
+        for i, h in enumerate(headers, 1):
+            cell = ws.cell(1, i, h)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center
+            ws.column_dimensions[cell.column_letter].width = max(len(h) + 4, 14)
+
+    def alt_fill(ws, row_idx):
+        if row_idx % 2 == 0:
+            fill = PatternFill("solid", fgColor="EBF5FB")
+            for col in range(1, ws.max_column + 1):
+                ws.cell(row_idx, col).fill = fill
+
+    # ===== 1. DO'KONLAR varaqi =====
     ws1 = wb.active
-    ws1.title = "Buyurtmalar"
-    headers = ["ID", "Mijoz TG", "Do'kon", "Mahsulotlar", "Summa", "To'lov", "Manzil", "Holat", "Vaqt", "Tasdiqlangan"]
-    for i, h in enumerate(headers, 1):
-        ws1.cell(1, i, h).font = Font(bold=True)
+    ws1.title = "🏪 Do'konlar"
+    ws1.row_dimensions[1].height = 22
+    h1 = ["🆔 ID", "🏪 Do'kon nomi", "👤 Egasi TG ID", "📱 Telefon", "💳 Karta", "⏰ Ish vaqti",
+          "⭐ Reyting", "📦 Buyurtmalar soni", "💰 Jami daromad", "📊 Admin %", "📅 Yaratilgan", "🟢 Holat"]
+    style_header(ws1, h1)
+
+    for row_idx, s in enumerate(shops, 2):
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total FROM orders WHERE shop_id=%s AND status='delivered'", (s['id'],))
+        sr = c2.fetchone()
+        conn2.close()
+
+        ws1.cell(row_idx, 1, s['id'])
+        ws1.cell(row_idx, 2, s['name'])
+        ws1.cell(row_idx, 3, s['owner_tg_id'])
+        ws1.cell(row_idx, 4, s['phone'] or '')
+        ws1.cell(row_idx, 5, s['card_number'] or '')
+        ws1.cell(row_idx, 6, s['work_time'] or '')
+        ws1.cell(row_idx, 7, round(s['rating'], 2))
+        ws1.cell(row_idx, 8, sr['cnt'])
+        ws1.cell(row_idx, 9, sr['total'])
+        ws1.cell(row_idx, 10, s['admin_percent'])
+        ws1.cell(row_idx, 11, s['created_at'])
+        ws1.cell(row_idx, 12, '🟢 Ochiq' if s['is_open'] else '🔴 Yopiq')
+        alt_fill(ws1, row_idx)
+
+    # ===== 2. DO'KON BUYURTMALARI varaqi =====
+    ws_ob = wb.create_sheet("📦 Do'kon buyurtmalari")
+    ws_ob.row_dimensions[1].height = 22
+    h_ob = ["📦 Buyurtma ID", "🏪 Do'kon", "👤 Mijoz ismi", "📱 Mijoz tel", "🛍️ Mahsulotlar",
+            "💰 Summa", "💳 To'lov", "📍 Manzil", "📊 Holat", "📅 Buyurtma vaqti",
+            "✅ Tasdiqlangan", "🚚 Yetkazilgan", "🎟️ Promo", "🔖 Chegirma"]
+    style_header(ws_ob, h_ob)
 
     for row_idx, o in enumerate(orders, 2):
-        ws1.cell(row_idx, 1, o['order_uid'])
-        ws1.cell(row_idx, 2, o['user_tg_id'])
-        ws1.cell(row_idx, 3, o['shop_name'] or '')
-        ws1.cell(row_idx, 4, o['products'])
-        ws1.cell(row_idx, 5, o['total_sum'])
-        ws1.cell(row_idx, 6, o['payment_type'])
-        ws1.cell(row_idx, 7, o['address'])
-        ws1.cell(row_idx, 8, o['status'])
-        ws1.cell(row_idx, 9, o['created_at'])
-        ws1.cell(row_idx, 10, o['confirmed_at'] or '')
+        user = get_user(o['user_tg_id'])
+        status_map = {"pending": "⏳ Kutilmoqda", "confirmed": "✅ Tasdiqlandi",
+                      "on_way": "🚗 Yo'lda", "delivered": "✅ Yetkazildi", "rejected": "❌ Rad etildi"}
+        ws_ob.cell(row_idx, 1, o['order_uid'])
+        ws_ob.cell(row_idx, 2, o['shop_name'] or '')
+        ws_ob.cell(row_idx, 3, user['full_name'] if user else 'Telefon buyurtma')
+        ws_ob.cell(row_idx, 4, user['phone'] if user else '')
+        ws_ob.cell(row_idx, 5, o['products'])
+        ws_ob.cell(row_idx, 6, o['total_sum'])
+        ws_ob.cell(row_idx, 7, o['payment_type'])
+        ws_ob.cell(row_idx, 8, o['address'])
+        ws_ob.cell(row_idx, 9, status_map.get(o['status'], o['status']))
+        ws_ob.cell(row_idx, 10, o['created_at'])
+        ws_ob.cell(row_idx, 11, o['confirmed_at'] or '')
+        ws_ob.cell(row_idx, 12, o['delivered_at'] or '')
+        ws_ob.cell(row_idx, 13, o['promo_code'] or '')
+        ws_ob.cell(row_idx, 14, o['discount'] or 0)
+        alt_fill(ws_ob, row_idx)
 
-    # Users sheet
-    ws2 = wb.create_sheet("Mijozlar")
-    for i, h in enumerate(["ID", "Ism", "Telefon", "TG ID", "Username", "Ro'yxat"], 1):
-        ws2.cell(1, i, h).font = Font(bold=True)
+    # ===== 3. KURYERLAR varaqi =====
+    ws2 = wb.create_sheet("🚚 Kuryerlar")
+    ws2.row_dimensions[1].height = 22
+    h2 = ["🆔 ID", "👤 Ism", "📱 Telefon", "🏪 Do'kon", "📦 Yetkazgan", "💰 Jami summa",
+          "🟢 Holat", "🔴 Band/Bo'sh", "📅 Qo'shilgan"]
+    style_header(ws2, h2)
+
+    for row_idx, cur in enumerate(couriers, 2):
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total FROM orders WHERE courier_tg_id=%s AND status='delivered'", (cur['tg_id'],))
+        cr = c2.fetchone()
+        conn2.close()
+
+        ws2.cell(row_idx, 1, cur['id'])
+        ws2.cell(row_idx, 2, cur['full_name'])
+        ws2.cell(row_idx, 3, cur['phone'])
+        ws2.cell(row_idx, 4, cur['shop_name'] or '')
+        ws2.cell(row_idx, 5, cr['cnt'])
+        ws2.cell(row_idx, 6, cr['total'])
+        ws2.cell(row_idx, 7, '🚫 Bloklangan' if cur['is_blocked'] else '✅ Faol')
+        ws2.cell(row_idx, 8, '🔴 Band' if cur['is_busy'] else '🟢 Bo\'sh')
+        ws2.cell(row_idx, 9, cur['registered_at'] or '')
+        alt_fill(ws2, row_idx)
+
+    # ===== 4. MIJOZLAR varaqi =====
+    ws3 = wb.create_sheet("👥 Mijozlar")
+    ws3.row_dimensions[1].height = 22
+    h3 = ["🆔 ID", "👤 Ism", "📱 Telefon", "💬 Username", "🆔 TG ID",
+          "📦 Buyurtmalar", "💰 Jami xarid", "🕐 Oxirgi buyurtma", "📅 Ro'yxat", "🟢 Holat"]
+    style_header(ws3, h3)
+
     for row_idx, u in enumerate(users, 2):
-        ws2.cell(row_idx, 1, u['id'])
-        ws2.cell(row_idx, 2, u['full_name'])
-        ws2.cell(row_idx, 3, u['phone'])
-        ws2.cell(row_idx, 4, u['tg_id'])
-        ws2.cell(row_idx, 5, u['username'] or '')
-        ws2.cell(row_idx, 6, u['registered_at'])
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total, MAX(created_at) as last FROM orders WHERE user_tg_id=%s AND status='delivered'", (u['tg_id'],))
+        ur = c2.fetchone()
+        conn2.close()
+
+        ws3.cell(row_idx, 1, u['id'])
+        ws3.cell(row_idx, 2, u['full_name'])
+        ws3.cell(row_idx, 3, u['phone'])
+        ws3.cell(row_idx, 4, u['username'] or '')
+        ws3.cell(row_idx, 5, u['tg_id'])
+        ws3.cell(row_idx, 6, ur['cnt'])
+        ws3.cell(row_idx, 7, ur['total'])
+        ws3.cell(row_idx, 8, ur['last'] or '')
+        ws3.cell(row_idx, 9, u['registered_at'])
+        ws3.cell(row_idx, 10, '🚫 Bloklangan' if u['is_blocked'] else '✅ Faol')
+        alt_fill(ws3, row_idx)
+
+    # ===== 5. CHATLAR varaqi =====
+    ws4 = wb.create_sheet("💬 Chatlar")
+    ws4.row_dimensions[1].height = 22
+    h4 = ["📤 Kimdan (TG ID)", "📤 Kimdan (Ism)", "📥 Kimga (TG ID)", "📥 Kimga (Ism)",
+          "💬 Xabar", "🏷️ Tur", "📦 Buyurtma ID", "📅 Vaqt"]
+    style_header(ws4, h4)
+
+    for row_idx, ch in enumerate(chats, 2):
+        ws4.cell(row_idx, 1, ch['from_tg_id'])
+        ws4.cell(row_idx, 2, ch['from_name'] or '')
+        ws4.cell(row_idx, 3, ch['to_tg_id'])
+        ws4.cell(row_idx, 4, ch['to_name'] or '')
+        ws4.cell(row_idx, 5, ch['message'])
+        ws4.cell(row_idx, 6, ch['chat_type'])
+        ws4.cell(row_idx, 7, ch['order_id'] or '')
+        ws4.cell(row_idx, 8, ch['created_at'])
+        alt_fill(ws4, row_idx)
+
+    # ===== 6. ADMIN LOGLARI varaqi =====
+    ws5 = wb.create_sheet("🔐 Admin loglari")
+    ws5.row_dimensions[1].height = 22
+    h5 = ["🆔 Admin TG ID", "⚙️ Harakat", "📝 Tafsilot", "📅 Vaqt"]
+    style_header(ws5, h5)
+
+    for row_idx, lg in enumerate(admin_logs, 2):
+        ws5.cell(row_idx, 1, lg['admin_tg_id'])
+        ws5.cell(row_idx, 2, lg['action'])
+        ws5.cell(row_idx, 3, lg['details'] or '')
+        ws5.cell(row_idx, 4, lg['created_at'])
+        alt_fill(ws5, row_idx)
+
+    # ===== 7. UMUMIY STATISTIKA varaqi =====
+    ws6 = wb.create_sheet("📊 Statistika")
+    ws6.row_dimensions[1].height = 22
+    stat_header_font = Font(bold=True, size=12)
+
+    stats = [
+        ("📊 BOT UMUMIY STATISTIKASI", ""),
+        ("", ""),
+        ("👥 Jami mijozlar", len(users)),
+        ("🏪 Jami do'konlar", len(shops)),
+        ("🚚 Jami kuryerlar", len(couriers)),
+        ("", ""),
+        ("📦 Jami buyurtmalar", len(orders)),
+    ]
+
+    delivered = [o for o in orders if o['status'] == 'delivered']
+    pending_o = [o for o in orders if o['status'] == 'pending']
+    rejected_o = [o for o in orders if o['status'] == 'rejected']
+
+    stats += [
+        ("✅ Yetkazilgan", len(delivered)),
+        ("⏳ Kutilmoqda", len(pending_o)),
+        ("❌ Rad etilgan", len(rejected_o)),
+        ("", ""),
+        ("💰 Jami daromad (yetkazilgan)", sum(o['total_sum'] for o in delivered)),
+        ("📅 Bugungi daromad", sum(o['total_sum'] for o in delivered if o['created_at'].startswith(datetime.now().strftime("%d.%m.%Y")))),
+    ]
+
+    for row_idx, (key, val) in enumerate(stats, 1):
+        ws6.cell(row_idx, 1, key).font = stat_header_font
+        ws6.cell(row_idx, 2, val)
+        ws6.column_dimensions['A'].width = 35
+        ws6.column_dimensions['B'].width = 20
 
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
 
+    filename = f"olimbek_savdo_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
     await message.answer_document(
-        types.BufferedInputFile(buf.read(), filename=f"eksport_{datetime.now().strftime('%d%m%Y')}.xlsx"),
-        caption="📥 Excel eksport tayyor!"
+        types.BufferedInputFile(buf.read(), filename=filename),
+        caption=(
+            f"📥 To'liq Excel eksport tayyor!\n\n"
+            f"📋 Varaqlar:\n"
+            f"  🏪 Do'konlar — to'liq ma'lumot\n"
+            f"  📦 Do'kon buyurtmalari — kim, qachon, nima\n"
+            f"  🚚 Kuryerlar — to'liq ma'lumot\n"
+            f"  👥 Mijozlar — barcha xaridlar bilan\n"
+            f"  💬 Chatlar — barcha suhbatlar\n"
+            f"  🔐 Admin loglari — kim nima qildi\n"
+            f"  📊 Statistika — umumiy ko'rsatkichlar\n\n"
+            f"📅 {now_str()}"
+        )
     )
 
 # --- PROMO CODES ---
@@ -3703,88 +4121,39 @@ async def admin_chats(message: types.Message):
 
     conn = get_db()
     c = conn.cursor()
-
-    # Umumiy xabarlar sonini tekshirish (debug uchun)
-    c.execute("SELECT COUNT(*) as total FROM chats")
-    total_count = c.fetchone()['total']
-
-    # Har bir suhbat juftligini birlashtirish: kichik ID har doim birinchi
-    c.execute("""
-        SELECT
-            LEAST(from_tg_id, to_tg_id) as user1,
-            GREATEST(from_tg_id, to_tg_id) as user2,
-            MAX(chat_type) as chat_type,
-            MAX(created_at) as last_msg
-        FROM chats
-        GROUP BY LEAST(from_tg_id, to_tg_id), GREATEST(from_tg_id, to_tg_id)
-        ORDER BY last_msg DESC
-        LIMIT 20
-    """)
+    c.execute("SELECT DISTINCT from_tg_id, to_tg_id, chat_type, MAX(created_at) as last FROM chats GROUP BY from_tg_id, to_tg_id ORDER BY last DESC LIMIT 20")
     chats = c.fetchall()
     conn.close()
 
     if not chats:
-        await message.answer(
-            f"💬 Hozircha chatlar yo'q\n\n"
-            f"📊 Jadvaldagi jami xabarlar: {total_count} ta\n\n"
-            f"ℹ️ Chatlar foydalanuvchilar '💬 Admin' yoki '💬 Do'kon egasi' tugmasini bosib xabar yuborganda bu yerda ko'rinadi."
-        )
+        await message.answer("💬 Chatlar yo'q")
         return
 
     kb = InlineKeyboardBuilder()
     for ch in chats:
-        label = f"💬 {ch['user1']} ↔ {ch['user2']} | {ch['chat_type']} | {ch['last_msg']}"
-        # callback_data: view_chat_{user1}_{user2}
-        cb_data = f"vchat_{ch['user1']}_{ch['user2']}"
-        kb.button(text=label[:60], callback_data=cb_data)
+        kb.button(text=f"💬 {ch['from_tg_id']} → {ch['to_tg_id']} ({ch['chat_type']}) {ch['last']}",
+                  callback_data=f"view_chat_{ch['from_tg_id']}_{ch['to_tg_id']}")
     kb.adjust(1)
-    await message.answer("💬 Barcha chatlar:", reply_markup=kb.as_markup())
+    await message.answer("💬 Chatlar:", reply_markup=kb.as_markup())
 
-@dp.callback_query(F.data.startswith("vchat_"))
+@dp.callback_query(F.data.startswith("view_chat_"))
 async def view_chat_detail(callback: types.CallbackQuery):
-    await callback.answer()
     parts = callback.data.split("_")
-    # vchat_{user1}_{user2}
-    if len(parts) < 3:
-        await callback.message.answer("❌ Xato ma'lumot")
-        return
-
-    try:
-        user1 = int(parts[1])
-        user2 = int(parts[2])
-    except (ValueError, IndexError):
-        await callback.message.answer("❌ ID ni o'qib bo'lmadi")
-        return
+    from_id = int(parts[2])
+    to_id = int(parts[3])
 
     conn = get_db()
     c = conn.cursor()
-    c.execute("""
-        SELECT from_tg_id, to_tg_id, message, chat_type, created_at
-        FROM chats
-        WHERE (from_tg_id=%s AND to_tg_id=%s)
-           OR (from_tg_id=%s AND to_tg_id=%s)
-        ORDER BY created_at ASC
-        LIMIT 50
-    """, (user1, user2, user2, user1))
-    msgs = c.fetchall()
+    c.execute("SELECT * FROM chats WHERE (from_tg_id=%s AND to_tg_id=%s) OR (from_tg_id=%s AND to_tg_id=%s) ORDER BY created_at ASC LIMIT 30",
+              (from_id, to_id, to_id, from_id))
+    messages = c.fetchall()
     conn.close()
 
-    if not msgs:
-        await callback.message.answer("💬 Bu chatda xabarlar yo'q")
-        return
+    text = f"💬 Chat:\n\n"
+    for m in messages:
+        text += f"[{m['created_at']}] {m['from_tg_id']}: {m['message']}\n"
 
-    text = f"💬 Chat: {user1} ↔ {user2}\n{'─'*30}\n"
-    for m in msgs:
-        sender = "👤" if m['from_tg_id'] == user1 else "👥"
-        text += f"{sender} [{m['created_at']}]\n{m['message']}\n\n"
-
-    # Telegram 4096 belgidan uzun xabar qabul qilmaydi
-    if len(text) > 4000:
-        chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
-        for chunk in chunks:
-            await callback.message.answer(chunk)
-    else:
-        await callback.message.answer(text)
+    await callback.message.answer(text[:4000])
 
 # --- BLOCKED LIST ---
 @dp.message(F.text == "🚫 Bloklangan")
@@ -3925,6 +4294,89 @@ async def phone_order_for_shop(callback: types.CallbackQuery):
     else:
         await callback.message.answer("📞 Do'kon telefon raqami ko'rsatilmagan")
 
+# --- ADMIN → MIJOZ CHAT ---
+@dp.callback_query(F.data.startswith("admin_chat_user_"))
+async def admin_start_chat_with_user(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    user_tg_id = int(callback.data.split("_")[3])
+    user = get_user(user_tg_id)
+    await state.update_data(user_tg_id=user_tg_id)
+    await state.set_state(AdminUserChatState.chatting)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🔚 Chatni tugatish", callback_data=f"admin_end_chat_{user_tg_id}")
+
+    await callback.message.answer(
+        f"💬 {user['full_name'] if user else user_tg_id} bilan chat boshlandi.\n"
+        f"Xabaringizni yozing. Tugatish uchun '🔚 Chatni tugatish' bosing.",
+        reply_markup=kb.as_markup()
+    )
+    log_admin_action(callback.from_user.id, "Mijoz bilan chat boshladi", f"Mijoz TG: {user_tg_id}")
+
+@dp.message(AdminUserChatState.chatting)
+async def admin_send_to_user(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    user_tg_id = data.get('user_tg_id')
+    if not user_tg_id:
+        await state.clear()
+        return
+
+    # Admin xabarini foydalanuvchiga yubor
+    try:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="💬 Admin bilan yozishish", callback_data="reply_to_admin_direct")
+        await bot.send_message(user_tg_id,
+            f"📩 Admin xabari:\n\n{message.text}",
+            reply_markup=kb.as_markup())
+        await message.answer("✅ Xabar yetkazildi")
+    except:
+        await message.answer("❌ Xabar yuborib bo'lmadi")
+
+    # Chatni saqlash
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at) VALUES (%s,%s,%s,%s,%s)",
+              (message.from_user.id, user_tg_id, message.text, "admin_to_user", now_str()))
+    conn.commit()
+    conn.close()
+
+@dp.callback_query(F.data.startswith("admin_end_chat_"))
+async def admin_end_chat(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    user_tg_id = data.get('user_tg_id')
+    await state.clear()
+    log_admin_action(callback.from_user.id, "Mijoz bilan chat tugatdi", f"Mijoz TG: {user_tg_id}")
+    await callback.message.answer("✅ Chat tugatildi. Barcha xabarlar 'Chatlar' va Excel'da saqlanadi.", reply_markup=admin_main_kb())
+
+
+# --- ADMIN LOG VIEWER ---
+@dp.message(F.text == "🔐 Admin loglari")
+async def admin_logs_view(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 30")
+    logs = c.fetchall()
+    conn.close()
+
+    if not logs:
+        await message.answer("🔐 Hozircha loglar yo'q")
+        return
+
+    text = "🔐 Admin harakatlari (oxirgi 30 ta):\n\n"
+    for lg in logs:
+        text += f"👤 {lg['admin_tg_id']} | {lg['action']}"
+        if lg['details']:
+            text += f" | {lg['details']}"
+        text += f"\n🕐 {lg['created_at']}\n\n"
+
+    for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
+        await message.answer(chunk)
+
+
 # --- VACATION CHECKER ---
 async def check_vacations():
     while True:
@@ -3947,6 +4399,36 @@ async def check_vacations():
             except:
                 pass
 
+        # Ish vaqtiga qarab avtomatik ochish/yopish
+        now_time = datetime.now().strftime("%H:%M")
+        c.execute("SELECT id, owner_tg_id, name, work_time, is_open, vacation_until FROM shops WHERE work_time IS NOT NULL AND work_time != ''")
+        time_shops = c.fetchall()
+        for s in time_shops:
+            if s['vacation_until']:
+                continue
+            wt = str(s['work_time']).strip()
+            try:
+                if "-" not in wt:
+                    continue
+                open_t, close_t = wt.split("-")
+                open_t = open_t.strip()
+                close_t = close_t.strip()
+                should_open = open_t <= now_time < close_t
+                if should_open and not s['is_open']:
+                    c.execute("UPDATE shops SET is_open=1 WHERE id=%s", (s['id'],))
+                    try:
+                        await bot.send_message(s['owner_tg_id'], "🟢 " + s['name'] + " ish vaqti keldi, do'kon avtomatik ochildi (" + open_t + "-" + close_t + ")")
+                    except:
+                        pass
+                elif not should_open and s['is_open']:
+                    c.execute("UPDATE shops SET is_open=0 WHERE id=%s", (s['id'],))
+                    try:
+                        await bot.send_message(s['owner_tg_id'], "🔴 " + s['name'] + " ish vaqti tugadi, do'kon avtomatik yopildi (" + open_t + "-" + close_t + ")")
+                    except:
+                        pass
+            except:
+                pass
+
         conn.commit()
         conn.close()
         await asyncio.sleep(3600)
@@ -3955,6 +4437,8 @@ async def check_vacations():
 async def main():
     init_db()
     asyncio.create_task(check_vacations())
+    asyncio.create_task(check_stuck_orders())
+    asyncio.create_task(check_user_order_timeout())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

@@ -148,6 +148,9 @@ class EditCourierState(StatesGroup):
     value = State()
     courier_id = State()
 
+class ContactInfoState(StatesGroup):
+    editing = State()
+
 # ===================== DATABASE =====================
 def get_db():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -279,6 +282,12 @@ def init_db():
         order_id TEXT
     )''')
 
+    c.execute('''CREATE TABLE IF NOT EXISTS contact_info (
+        id SERIAL PRIMARY KEY,
+        title TEXT,
+        value TEXT
+    )''')
+
     conn.commit()
     conn.close()
 
@@ -350,7 +359,8 @@ def user_main_kb():
     kb.button(text="🏪 Do'konlar")
     kb.button(text="🛒 Savat")
     kb.button(text="👤 Profil")
-    kb.adjust(2, 1)
+    kb.button(text="📞 Aloqa uchun")
+    kb.adjust(2, 2)
     return kb.as_markup(resize_keyboard=True)
 
 def shop_main_kb():
@@ -363,6 +373,7 @@ def shop_main_kb():
     kb.button(text="🏖️ Ta'tilda")
     kb.button(text="📞 Telefon buyurtma")
     kb.button(text="🚚 Kuryer qo'shish")
+    kb.button(text="📞 Aloqa uchun")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
@@ -396,6 +407,7 @@ def admin_main_kb():
     kb.button(text="🔐 Admin qo'shish")
     kb.button(text="📈 Haftalik hisobot")
     kb.button(text="🗑️ Bot ma'lumotlari")
+    kb.button(text="📞 Aloqa uchun")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
@@ -643,6 +655,65 @@ async def shops_list(message: types.Message):
     kb.adjust(1)
     await message.answer("🏪 Do'konlar ro'yxati:", reply_markup=kb.as_markup())
 
+PRODUCTS_PER_PAGE = 8
+
+def build_shop_keyboard(shop_id, products, cart_items, page=0):
+    kb = InlineKeyboardBuilder()
+    start = page * PRODUCTS_PER_PAGE
+    end = start + PRODUCTS_PER_PAGE
+    page_products = products[start:end]
+    total_pages = (len(products) + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE
+
+    for p in page_products:
+        qty = cart_items.get(str(p['id']), {}).get('qty', 0)
+        qty_text = f" ✅ {qty}x" if qty > 0 else ""
+        kb.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}", callback_data=f"add_cart_{p['id']}_{shop_id}")
+
+    if total_pages > 1:
+        nav_buttons = []
+        if page > 0:
+            kb.button(text="◀️", callback_data=f"shoppage_{shop_id}_{page-1}")
+        kb.button(text=f"{page+1}/{total_pages}", callback_data="noop")
+        if page < total_pages - 1:
+            kb.button(text="▶️", callback_data=f"shoppage_{shop_id}_{page+1}")
+        nav_count = (1 if page > 0 else 0) + 1 + (1 if page < total_pages - 1 else 0)
+        kb.adjust(*([1]*len(page_products)), nav_count, 1, 1, 1)
+    else:
+        kb.adjust(*([1]*len(page_products)), 1, 1, 1)
+
+    kb.button(text="🛒 Savat", callback_data="view_cart")
+    kb.button(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}")
+    kb.button(text="⬅️ Orqaga", callback_data="back_shops")
+    return kb
+
+@dp.callback_query(F.data.startswith("shoppage_"))
+async def shop_page(callback: types.CallbackQuery):
+    parts = callback.data.split("_")
+    shop_id = int(parts[1])
+    page = int(parts[2])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+    c.execute("SELECT * FROM products WHERE shop_id=%s", (shop_id,))
+    products = c.fetchall()
+    conn.close()
+    if not shop:
+        await callback.answer()
+        return
+    cart = cart_get(callback.from_user.id)
+    cart_items = cart.get("items", {}) if cart.get("shop_id") == shop_id else {}
+    kb = build_shop_keyboard(shop_id, products, cart_items, page)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=kb.as_markup())
+    except:
+        pass
+    await callback.answer()
+
+@dp.callback_query(F.data == "noop")
+async def noop_cb(callback: types.CallbackQuery):
+    await callback.answer()
+
 @dp.callback_query(F.data.startswith("shop_") & ~F.data.startswith("shop_edit") & ~F.data.startswith("shop_del"))
 async def shop_detail(callback: types.CallbackQuery):
     shop_id = int(callback.data.split("_")[1])
@@ -667,19 +738,12 @@ async def shop_detail(callback: types.CallbackQuery):
         except:
             pass
 
-    text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar:"
+    total_pages = (len(products) + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE if products else 1
+    text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n📦 Mahsulotlar ({len(products)} ta):"
 
-    kb = InlineKeyboardBuilder()
     cart = cart_get(callback.from_user.id)
     cart_items = cart.get("items", {}) if cart.get("shop_id") == shop_id else {}
-    for p in products:
-        qty = cart_items.get(str(p['id']), {}).get('qty', 0)
-        qty_text = f" ✅ {qty}x" if qty > 0 else ""
-        kb.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}", callback_data=f"add_cart_{p['id']}_{shop_id}")
-    kb.button(text="🛒 Savat", callback_data="view_cart")
-    kb.button(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}")
-    kb.button(text="⬅️ Orqaga", callback_data="back_shops")
-    kb.adjust(1)
+    kb = build_shop_keyboard(shop_id, products, cart_items, 0)
     await callback.message.answer(text, reply_markup=kb.as_markup())
 
 @dp.callback_query(F.data == "back_shops")
@@ -769,17 +833,8 @@ async def add_to_cart(callback: types.CallbackQuery):
     conn2.close()
 
     if shop:
-        text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar:"
-        kb2 = InlineKeyboardBuilder()
         cart_items = cart.get("items", {})
-        for p in products_list:
-            qty = cart_items.get(str(p['id']), {}).get('qty', 0)
-            qty_text = f" 🛒 {qty}x" if qty > 0 else ""
-            kb2.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}", callback_data=f"add_cart_{p['id']}_{shop_id}")
-        kb2.button(text="🛒 Savat", callback_data="view_cart")
-        kb2.button(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}")
-        kb2.button(text="⬅️ Orqaga", callback_data="back_shops")
-        kb2.adjust(1)
+        kb2 = build_shop_keyboard(shop_id, products_list, cart_items, 0)
         try:
             await callback.message.edit_reply_markup(reply_markup=kb2.as_markup())
         except:
@@ -3555,6 +3610,101 @@ async def phone_order_for_shop(callback: types.CallbackQuery):
         )
     else:
         await callback.message.answer("📞 Do'kon telefon raqami ko'rsatilmagan")
+
+# --- ALOQA UCHUN ---
+@dp.message(F.text == "📞 Aloqa uchun")
+async def aloqa_uchun(message: types.Message, state: FSMContext):
+    tg_id = message.from_user.id
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM contact_info ORDER BY id")
+    rows = c.fetchall()
+    conn.close()
+
+    if not rows:
+        text = "📞 Aloqa uchun ma'lumot hali kiritilmagan."
+    else:
+        text = "📞 <b>Aloqa uchun:</b>\n\n"
+        for row in rows:
+            text += f"<b>{row['title']}</b>\n{row['value']}\n\n"
+
+    if is_admin(tg_id):
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✏️ Tahrirlash", callback_data="edit_contact_info")
+        await message.answer(text, reply_markup=kb.as_markup(), parse_mode="HTML")
+    else:
+        await message.answer(text, parse_mode="HTML")
+
+@dp.callback_query(F.data == "edit_contact_info")
+async def edit_contact_info_start(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM contact_info ORDER BY id")
+    rows = c.fetchall()
+    conn.close()
+
+    kb = InlineKeyboardBuilder()
+    for row in rows:
+        kb.button(text=f"✏️ {row['title']}", callback_data=f"edit_contact_{row['id']}")
+        kb.button(text=f"🗑️", callback_data=f"del_contact_{row['id']}")
+    kb.button(text="➕ Yangi qo'shish", callback_data="add_contact_new")
+    kb.adjust(2)
+    await callback.message.answer("📞 Aloqa ma'lumotlarini tahrirlash:", reply_markup=kb.as_markup())
+
+@dp.callback_query(F.data == "add_contact_new")
+async def add_contact_new(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    await callback.message.answer("✍️ Sarlavha kiriting (masalan: Telegram, Telefon, Instagram):")
+    await state.update_data(contact_action="add")
+    await state.set_state(ContactInfoState.editing)
+
+@dp.callback_query(F.data.startswith("edit_contact_"))
+async def edit_contact_item(callback: types.CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return
+    contact_id = int(callback.data.split("_")[2])
+    await callback.message.answer("✍️ Yangi sarlavha kiriting (masalan: Telegram):")
+    await state.update_data(contact_action="edit", contact_id=contact_id)
+    await state.set_state(ContactInfoState.editing)
+
+@dp.callback_query(F.data.startswith("del_contact_"))
+async def del_contact_item(callback: types.CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        return
+    contact_id = int(callback.data.split("_")[2])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM contact_info WHERE id=%s", (contact_id,))
+    conn.commit()
+    conn.close()
+    await callback.message.answer("🗑️ O'chirildi!")
+    await callback.answer()
+
+@dp.message(ContactInfoState.editing)
+async def contact_info_title(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    if "contact_value_waiting" not in data:
+        await state.update_data(contact_title=message.text)
+        await message.answer("✍️ Qiymatini kiriting (masalan: @username yoki +998901234567):")
+        await state.update_data(contact_value_waiting=True)
+    else:
+        data = await state.get_data()
+        title = data["contact_title"]
+        value = message.text
+        conn = get_db()
+        c = conn.cursor()
+        if data.get("contact_action") == "edit" and "contact_id" in data:
+            c.execute("UPDATE contact_info SET title=%s, value=%s WHERE id=%s",
+                      (title, value, data["contact_id"]))
+        else:
+            c.execute("INSERT INTO contact_info (title, value) VALUES (%s, %s)", (title, value))
+        conn.commit()
+        conn.close()
+        await message.answer(f"✅ Saqlandi!\n<b>{title}</b>: {value}", parse_mode="HTML")
+        await state.clear()
 
 # --- VACATION CHECKER ---
 async def check_vacations():

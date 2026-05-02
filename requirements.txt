@@ -1,4 +1,5 @@
-aiogram
-openpyxl
-pillow
+aiogram>=3.0.0
+psycopg2-binary
 flask
+openpyxl
+Pillow

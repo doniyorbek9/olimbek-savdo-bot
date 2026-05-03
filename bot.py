@@ -48,6 +48,15 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
+# Bloklangan foydalanuvchi middleware
+@dp.message.middleware()
+async def blocked_user_middleware(handler, message: types.Message, data):
+    user = get_user(message.from_user.id)
+    if user and user['is_blocked']:
+        await message.answer("🚫 Siz bloklangansiz. Botdan foydalanish imkoniyatingiz cheklandi.")
+        return
+    return await handler(message, data)
+
 # ===================== STATES =====================
 class RegState(StatesGroup):
     phone = State()
@@ -157,6 +166,17 @@ class EditCourierState(StatesGroup):
 class AdminUserChatState(StatesGroup):
     chatting = State()
     user_tg_id = State()
+
+class AdminOrderState(StatesGroup):
+    choosing_shop = State()
+    phone = State()
+    name = State()
+    address = State()
+    product = State()
+    confirm = State()
+
+class ReportErrorState(StatesGroup):
+    waiting_text = State()
 
 # ===================== DATABASE =====================
 def get_db():
@@ -392,7 +412,7 @@ def user_main_kb():
     kb.button(text="👤 Profil")
     kb.button(text="💬 Do'kon egasi")
     kb.button(text="💬 Admin")
-    kb.button(text="🤖 AI buyurtma")
+    kb.button(text="⚠️ Hatolik")
     kb.adjust(2, 1, 2, 1)
     return kb.as_markup(resize_keyboard=True)
 
@@ -438,6 +458,7 @@ def admin_main_kb():
     kb.button(text="🚫 Bloklangan")
     kb.button(text="📈 Haftalik hisobot")
     kb.button(text="🔐 Admin loglari")
+    kb.button(text="📱 Buyurtma berish")
     kb.button(text="🗑️ Bot ma'lumotlari")
     kb.button(text="🏆 Top mijozlar")
     kb.adjust(2)
@@ -529,6 +550,70 @@ def generate_receipt(order_data, user_data, shop_data):
     buf.seek(0)
     return buf
 
+
+def generate_pdf_receipt(order_data, user_data, shop_data):
+    """PDF chek generatsiya (reportlab yo'q bo'lsa PNG qaytaradi)"""
+    try:
+        from reportlab.lib.pagesizes import A6
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Table
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A6,
+                                rightMargin=1*cm, leftMargin=1*cm,
+                                topMargin=1*cm, bottomMargin=1*cm)
+        styles = getSampleStyleSheet()
+        story = []
+
+        title_style = ParagraphStyle('title', parent=styles['Normal'],
+                                     fontSize=14, fontName='Helvetica-Bold',
+                                     alignment=1, textColor=colors.HexColor('#27AE60'))
+        normal_style = ParagraphStyle('norm', parent=styles['Normal'],
+                                      fontSize=9, fontName='Helvetica')
+        bold_style = ParagraphStyle('bold', parent=styles['Normal'],
+                                    fontSize=10, fontName='Helvetica-Bold')
+
+        story.append(Paragraph("OLIMBEK SAVDO", title_style))
+        story.append(Paragraph("🧾 CHEK / KVITANSIYA", title_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+        story.append(Spacer(1, 0.2*cm))
+
+        info = [
+            f"Buyurtma ID: #{order_data.get('order_uid', '')}",
+            f"Vaqt: {order_data.get('created_at', '')}",
+            f"Mijoz: {user_data.get('full_name', '')}",
+            f"Telefon: {user_data.get('phone', '')}",
+            f"Do'kon: {shop_data.get('name', '')}",
+            f"Manzil: {order_data.get('address', '')}",
+            f"To'lov: {order_data.get('payment_type', '')}",
+        ]
+        for line in info:
+            story.append(Paragraph(line, normal_style))
+            story.append(Spacer(1, 0.1*cm))
+
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+        story.append(Paragraph("Mahsulotlar:", bold_style))
+        products = order_data.get('products', '').split('|')
+        for p in products:
+            story.append(Paragraph(f"• {p.strip()}", normal_style))
+
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
+        if order_data.get('discount', 0) > 0:
+            story.append(Paragraph(f"Chegirma: -{order_data['discount']:,.0f} so'm", normal_style))
+        story.append(Paragraph(f"JAMI: {order_data.get('total_sum', 0):,.0f} so'm", title_style))
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph("Xarid qilganingiz uchun rahmat!", title_style))
+
+        doc.build(story)
+        buf.seek(0)
+        return buf, "pdf"
+    except ImportError:
+        # reportlab yo'q — PNG qaytaradi
+        return generate_receipt(order_data, user_data, shop_data), "png"
+
+
 # ===================== HANDLERS =====================
 
 # --- START ---
@@ -537,6 +622,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     tg_id = message.from_user.id
     user = get_user(tg_id)
+
+    # Bloklangan foydalanuvchi tekshiruvi
+    if user and user['is_blocked']:
+        await message.answer("🚫 Siz bloklangansiz. Botdan foydalanish imkoniyatingiz cheklandi.")
+        return
 
     if user:
         await message.answer(
@@ -1200,6 +1290,9 @@ async def finalize_order(message, state, tg_id, payment_type, check_photo_id, so
                     await bot.send_photo(shop['owner_tg_id'], check_photo_id, caption=admin_text, reply_markup=kb.as_markup())
                 else:
                     await bot.send_message(shop['owner_tg_id'], admin_text, reply_markup=kb.as_markup())
+                # Lokatsiya bo'lsa do'kon egasiga ham yuborish
+                if data.get('lat') and data.get('lon'):
+                    await bot.send_location(shop['owner_tg_id'], data['lat'], data['lon'])
             except Exception as e:
                 logger.error(f"Do'kon egasiga xabar yuborilmadi: {e}")
                 for admin_id in ADMIN_IDS:
@@ -1326,6 +1419,9 @@ async def send_courier_offer(order_uid, courier, all_couriers, attempt):
 
     try:
         await bot.send_message(courier['tg_id'], text, reply_markup=kb.as_markup())
+        # Lokatsiya bo'lsa kuryerga ham yuborish
+        if order.get('latitude') and order.get('longitude'):
+            await bot.send_location(courier['tg_id'], order['latitude'], order['longitude'])
     except:
         pass
 
@@ -1524,6 +1620,25 @@ async def courier_delivered(callback: types.CallbackQuery):
         await bot.send_message(o['user_tg_id'],
                                f"✅ Buyurtmangiz #{order_uid} yetkazildi!\n⭐ Iltimos, baho bering:",
                                reply_markup=kb.as_markup())
+        # PDF chek yuborish
+        try:
+            conn3 = get_db()
+            c3 = conn3.cursor()
+            c3.execute("SELECT * FROM shops WHERE id=%s", (o['shop_id'],))
+            shop3 = c3.fetchone()
+            conn3.close()
+            user3 = get_user(o['user_tg_id'])
+            pdf_buf, fmt = generate_pdf_receipt(dict(o), dict(user3) if user3 else {}, dict(shop3) if shop3 else {})
+            if fmt == "pdf":
+                await bot.send_document(o['user_tg_id'],
+                    types.BufferedInputFile(pdf_buf.read(), filename=f"chek_{order_uid}.pdf"),
+                    caption=f"🧾 Buyurtma #{order_uid} cheki")
+            else:
+                await bot.send_photo(o['user_tg_id'],
+                    types.BufferedInputFile(pdf_buf.read(), filename=f"chek_{order_uid}.png"),
+                    caption=f"🧾 Buyurtma #{order_uid} cheki")
+        except Exception as e:
+            logger.error(f"PDF chek xatosi: {e}")
 
     await callback.answer("✅ Yetkazildi!")
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -2518,7 +2633,12 @@ async def top_buyers(message: types.Message):
 
     await message.answer(text, parse_mode="HTML")
 
-# ===================== AI BUYURTMA (GROQ) =====================
+# ===================== AI BUYURTMA (GROQ) — HOZIRCHA O'CHIRILGAN =====================
+# @dp.message(F.text == "🤖 AI buyurtma")
+# async def ai_order_start ...
+# (Yoqish uchun # larni olib tashlang)
+
+'''
 import urllib.request
 import json as json_lib
 
@@ -2550,7 +2670,9 @@ async def groq_ask(prompt: str) -> str:
         return result["choices"][0]["message"]["content"]
     except Exception as e:
         return '{"error": "' + str(e) + '"}'
+'''
 
+'''  # AI HANDLERS START
 @dp.message(F.text == "🤖 AI buyurtma")
 async def ai_order_start(message: types.Message, state: FSMContext):
     tg_id = message.from_user.id
@@ -2614,11 +2736,11 @@ async def ai_order_process(message: types.Message, state: FSMContext):
 
     await message.answer("🤖 Tahlil qilinmoqda...")
 
-    prompt = """Siz do'kon botisiz. Quyidagi menyudan mijoz buyurtmasini aniqlang.
+    prompt = """Siz do\'kon botisiz. Quyidagi menyudan mijoz buyurtmasini aniqlang.
 
 Menyu: """ + menu_text + """
 
-Mijoz yozdi: """" + message.text + """"
+Mijoz yozdi: \"""" + message.text + """\"
 
 Faqat JSON qaytaring, boshqa hech narsa yozmang:
 {
@@ -2627,7 +2749,7 @@ Faqat JSON qaytaring, boshqa hech narsa yozmang:
     ...
   ],
   "not_found": ["topilmagan mahsulot nomlari"],
-  "clarify": "Agar noaniq bo'lsa savol, aks holda null"
+  "clarify": "Agar noaniq bo\'lsa savol, aks holda null"
 }"""
 
     response = await groq_ask(prompt)
@@ -2654,7 +2776,6 @@ Faqat JSON qaytaring, boshqa hech narsa yozmang:
         await message.answer("❌ Hech qanday mahsulot topilmadi. Qaytadan yozing.")
         return
 
-    # Narxlarni menyudan olish (AI ni ishonmaymiz narxlarga)
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT name, price FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1)", (data["shop_id"],))
@@ -2665,7 +2786,6 @@ Faqat JSON qaytaring, boshqa hech narsa yozmang:
     total = 0
     for item in found:
         name_lower = item["name"].lower()
-        # Exact yoki yaqin nom topish
         matched = None
         for db_name, db_prod in db_products.items():
             if name_lower in db_name or db_name in name_lower:
@@ -2683,16 +2803,16 @@ Faqat JSON qaytaring, boshqa hech narsa yozmang:
 
     text = "🛒 <b>Buyurtmangiz:</b>\n\n"
     for item in confirmed_items:
-        text += "• " + item["name"] + " × " + str(item["qty"]) + " — " + "{:,.0f}".format(item["price"] * item["qty"]) + " so'm\n"
+        text += "• " + item["name"] + " × " + str(item["qty"]) + " — " + "{:,.0f}".format(item["price"] * item["qty"]) + " so\'m\n"
     if not_found:
         text += "\n⚠️ Topilmadi: " + ", ".join(not_found)
-    text += "\n\n💰 <b>Jami: " + "{:,.0f}".format(total) + " so'm</b>\n\nTasdiqlaysizmi?"
+    text += "\n\n💰 <b>Jami: " + "{:,.0f}".format(total) + " so\'m</b>\n\nTasdiqlaysizmi?"
 
     await state.update_data(ai_items=confirmed_items, ai_total=total)
 
     kb = InlineKeyboardBuilder()
     kb.button(text="✅ Ha, buyurtma berish", callback_data="ai_confirm_yes")
-    kb.button(text="❌ Yo'q, qaytadan", callback_data="ai_confirm_no")
+    kb.button(text="❌ Yo\'q, qaytadan", callback_data="ai_confirm_no")
     kb.adjust(1)
     await message.answer(text, parse_mode="HTML", reply_markup=kb.as_markup())
     await state.set_state(AIOrderState.confirming)
@@ -2713,7 +2833,6 @@ async def ai_confirm_yes(callback: types.CallbackQuery, state: FSMContext):
     total = data["ai_total"]
     shop_id = data["shop_id"]
 
-    # Savatga qo'shish
     cart_items = json_lib.dumps([{"id": 0, "name": i["name"], "price": i["price"], "qty": i["qty"]} for i in items])
     conn = get_db()
     c = conn.cursor()
@@ -2724,13 +2843,198 @@ async def ai_confirm_yes(callback: types.CallbackQuery, state: FSMContext):
 
     await state.update_data(order_source="ai")
     await callback.message.answer(
-        "✅ Savatga qo'shildi! Endi manzilni kiriting:",
+        "✅ Savatga qo\'shildi! Endi manzilni kiriting:",
         reply_markup=ReplyKeyboardRemove()
     )
     await callback.answer()
     await state.set_state(OrderState.address)
+'''  # AI HANDLERS END
 
 # ===================== ADMIN PANEL =====================
+
+# --- ADMIN BUYURTMA BERISH ---
+@dp.message(F.text == "📱 Buyurtma berish")
+async def admin_order_start(message: types.Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE is_open=1 ORDER BY name")
+    shops = c.fetchall()
+    conn.close()
+    if not shops:
+        await message.answer("Hozir ochiq do'kon yo'q")
+        return
+    kb = InlineKeyboardBuilder()
+    for s in shops:
+        kb.button(text=f"🏪 {s['name']}", callback_data=f"adm_ord_shop_{s['id']}")
+    kb.adjust(1)
+    await message.answer("🏪 Qaysi do'konga buyurtma?", reply_markup=kb.as_markup())
+    await state.set_state(AdminOrderState.choosing_shop)
+
+@dp.callback_query(F.data.startswith("adm_ord_shop_"), AdminOrderState.choosing_shop)
+async def admin_order_shop(callback: types.CallbackQuery, state: FSMContext):
+    shop_id = int(callback.data.split("_")[3])
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+    conn.close()
+    await state.update_data(shop_id=shop_id, shop_name=shop['name'])
+    await callback.message.answer("📱 Mijoz telefon raqami (masalan: +998901234567):")
+    await state.set_state(AdminOrderState.phone)
+    await callback.answer()
+
+@dp.message(AdminOrderState.phone)
+async def admin_order_phone(message: types.Message, state: FSMContext):
+    await state.update_data(client_phone=message.text)
+    await message.answer("👤 Mijoz ismi familiyasi:")
+    await state.set_state(AdminOrderState.name)
+
+@dp.message(AdminOrderState.name)
+async def admin_order_name(message: types.Message, state: FSMContext):
+    await state.update_data(client_name=message.text)
+    await message.answer("📍 Manzil:")
+    await state.set_state(AdminOrderState.address)
+
+@dp.message(AdminOrderState.address)
+async def admin_order_address(message: types.Message, state: FSMContext):
+    await state.update_data(address=message.text)
+    await message.answer("🛍️ Mahsulotlarni yozing (masalan: Osh x2, Shashlik x1):")
+    await state.set_state(AdminOrderState.product)
+
+@dp.message(AdminOrderState.product)
+async def admin_order_product(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    await state.update_data(products=message.text)
+
+    uid = gen_id()
+    await state.update_data(order_uid=uid)
+
+    text = (
+        f"📋 Buyurtma ma'lumotlari:\n\n"
+        f"🏪 Do'kon: {data['shop_name']}\n"
+        f"📱 Telefon: {data['client_phone']}\n"
+        f"👤 Ism: {data['client_name']}\n"
+        f"📍 Manzil: {data['address']}\n"
+        f"🛍️ Mahsulot: {message.text}\n"
+        f"🆔 Buyurtma ID: #{uid}"
+    )
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Yuborish", callback_data="adm_ord_confirm")
+    kb.button(text="❌ Bekor qilish", callback_data="adm_ord_cancel")
+    kb.adjust(2)
+    await message.answer(text, reply_markup=kb.as_markup())
+    await state.set_state(AdminOrderState.confirm)
+
+@dp.callback_query(F.data == "adm_ord_cancel", AdminOrderState.confirm)
+async def admin_order_cancel(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.answer("❌ Bekor qilindi", reply_markup=admin_main_kb())
+    await callback.answer()
+
+@dp.callback_query(F.data == "adm_ord_confirm", AdminOrderState.confirm)
+async def admin_order_confirm(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await state.clear()
+
+    shop_id = data['shop_id']
+    uid = data['order_uid']
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+
+    c.execute("""INSERT INTO orders (order_uid, user_tg_id, shop_id, products, total_sum,
+              payment_type, address, status, created_at, source)
+              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+              (uid, 0, shop_id, data['products'], 0,
+               'naqd', data['address'], 'pending', now_str(), 'admin'))
+    conn.commit()
+    conn.close()
+
+    log_admin_action(callback.from_user.id, "Buyurtma berdi", f"Do'kon: {data['shop_name']}, ID: #{uid}")
+
+    # Do'kon egasiga xabar
+    shop_text = (
+        f"📱 ADMINdan buyurtma!\n\n"
+        f"🆔 #{uid}\n"
+        f"👤 Mijoz: {data['client_name']}\n"
+        f"📱 Tel: {data['client_phone']}\n"
+        f"📍 Manzil: {data['address']}\n"
+        f"🛍️ Mahsulot: {data['products']}\n"
+        f"💳 To'lov: Naqd\n"
+        f"📅 Vaqt: {now_str()}"
+    )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Tasdiqlash", callback_data=f"confirm_order_{uid}")
+    kb.button(text="❌ Rad etish", callback_data=f"reject_order_{uid}")
+    kb.adjust(2)
+    try:
+        await bot.send_message(shop['owner_tg_id'], shop_text, reply_markup=kb.as_markup())
+    except:
+        pass
+
+    await callback.message.answer(f"✅ Buyurtma #{uid} do'konga yuborildi!", reply_markup=admin_main_kb())
+    await callback.answer()
+
+
+# --- MIJOZ: HATOLIK TUGMASI ---
+@dp.message(F.text == "⚠️ Hatolik")
+async def user_report_error(message: types.Message, state: FSMContext):
+    user = get_user(message.from_user.id)
+    if not user:
+        return
+    await message.answer("📝 Qanday hatolik yuz berdi? Batafsil yozing:")
+    await state.set_state(ReportErrorState.waiting_text)
+
+@dp.message(ReportErrorState.waiting_text)
+async def user_error_text(message: types.Message, state: FSMContext):
+    await state.clear()
+    user = get_user(message.from_user.id)
+
+    # Bazaga saqlash
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO chats (from_tg_id, to_tg_id, message, chat_type, created_at) VALUES (%s,%s,%s,%s,%s)",
+              (message.from_user.id, 0, f"[HATOLIK] {message.text}", "error_report", now_str()))
+    conn.commit()
+    conn.close()
+
+    # Adminga xabar
+    admin_text = (
+        f"⚠️ HATOLIK XABARI\n\n"
+        f"👤 {user['full_name'] if user else 'Noma\'lum'}\n"
+        f"📱 {user['phone'] if user else ''}\n"
+        f"🆔 TG ID: {message.from_user.id}\n"
+        f"📅 {now_str()}\n\n"
+        f"💬 Xabar:\n{message.text}"
+    )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💬 Mijoz bilan chat", callback_data=f"admin_chat_user_{message.from_user.id}")
+    kb.button(text="✅ Ko'rib chiqildi", callback_data=f"error_done_{message.from_user.id}")
+    kb.adjust(1)
+
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_message(admin_id, admin_text, reply_markup=kb.as_markup())
+        except:
+            pass
+
+    await message.answer("✅ Xabatingiz adminlarga yuborildi. Tez orada ko'rib chiqiladi!")
+
+@dp.callback_query(F.data.startswith("error_done_"))
+async def error_done(callback: types.CallbackQuery):
+    user_tg_id = int(callback.data.split("_")[2])
+    await callback.message.edit_text(
+        callback.message.text + "\n\n✅ Ko'rib chiqildi"
+    )
+    try:
+        await bot.send_message(user_tg_id, "✅ Hatoligingiz ko'rib chiqildi. Rahmat!")
+    except:
+        pass
+    await callback.answer("✅ Bajarildi")
 
 @dp.message(F.text == "🏪 Do'konlar boshqaruv")
 async def admin_shops(message: types.Message):
@@ -3073,6 +3377,17 @@ async def block_user(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     log_admin_action(callback.from_user.id, "Mijoz bloklandi", f"TG ID: {tg_id}")
+    # Mijozga xabar yuborish
+    try:
+        await bot.send_message(tg_id, "🚫 Siz bloklangansiz. Botdan foydalanish imkoniyatingiz cheklandi.")
+    except:
+        pass
+    # Tugmani yangilash
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Blokdan chiqarish", callback_data=f"unblock_user_{tg_id}")
+    kb.button(text="💬 Chat boshlash", callback_data=f"admin_chat_user_{tg_id}")
+    kb.adjust(1)
+    await callback.message.edit_reply_markup(reply_markup=kb.as_markup())
     await callback.answer("🚫 Bloklandi")
 
 @dp.callback_query(F.data.startswith("unblock_user_"))
@@ -3084,6 +3399,17 @@ async def unblock_user(callback: types.CallbackQuery):
     conn.commit()
     conn.close()
     log_admin_action(callback.from_user.id, "Mijoz blokdan chiqarildi", f"TG ID: {tg_id}")
+    # Mijozga xabar yuborish
+    try:
+        await bot.send_message(tg_id, "✅ Bloklangiz olib tashlandi. Botdan foydalanishingiz mumkin!")
+    except:
+        pass
+    # Tugmani yangilash
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🚫 Bloklash", callback_data=f"block_user_{tg_id}")
+    kb.button(text="💬 Chat boshlash", callback_data=f"admin_chat_user_{tg_id}")
+    kb.adjust(1)
+    await callback.message.edit_reply_markup(reply_markup=kb.as_markup())
     await callback.answer("✅ Blokdan chiqarildi")
 
 # --- ADMIN COURIERS ---
@@ -3623,224 +3949,358 @@ async def excel_export(message: types.Message):
         return
 
     log_admin_action(message.from_user.id, "Excel eksport yukladi")
-
-    await message.answer("⏳ Excel fayl tayyorlanmoqda...")
+    await message.answer("⏳ Excel fayl tayyorlanmoqda... Bu biroz vaqt olishi mumkin.")
 
     conn = get_db()
     c = conn.cursor()
-
-    c.execute("SELECT orders.*, shops.name as shop_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id ORDER BY orders.created_at DESC")
+    c.execute("SELECT orders.*, shops.name as shop_name, couriers.full_name as courier_name FROM orders LEFT JOIN shops ON orders.shop_id=shops.id LEFT JOIN couriers ON orders.courier_tg_id=couriers.tg_id ORDER BY orders.created_at DESC")
     orders = c.fetchall()
-
     c.execute("SELECT * FROM users ORDER BY registered_at DESC")
     users = c.fetchall()
-
     c.execute("SELECT couriers.*, shops.name as shop_name FROM couriers LEFT JOIN shops ON couriers.shop_id=shops.id ORDER BY registered_at DESC")
     couriers = c.fetchall()
-
     c.execute("SELECT * FROM shops ORDER BY created_at DESC")
     shops = c.fetchall()
-
-    c.execute("SELECT chats.*, u1.full_name as from_name, u2.full_name as to_name FROM chats LEFT JOIN users u1 ON chats.from_tg_id=u1.tg_id LEFT JOIN users u2 ON chats.to_tg_id=u2.tg_id ORDER BY created_at DESC LIMIT 500")
+    c.execute("SELECT chats.*, u1.full_name as from_name, u2.full_name as to_name FROM chats LEFT JOIN users u1 ON chats.from_tg_id=u1.tg_id LEFT JOIN users u2 ON chats.to_tg_id=u2.tg_id ORDER BY created_at DESC LIMIT 1000")
     chats = c.fetchall()
-
-    c.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 500")
+    c.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 1000")
     admin_logs = c.fetchall()
-
+    c.execute("SELECT * FROM promo_codes ORDER BY created_at DESC")
+    promos = c.fetchall()
     conn.close()
 
     wb = openpyxl.Workbook()
 
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_fill = PatternFill("solid", fgColor="2E86AB")
-    center = Alignment(horizontal="center", vertical="center")
+    # Style helpers
+    h_font = Font(bold=True, color="FFFFFF", size=11)
+    h_fill = PatternFill("solid", fgColor="1A3C5E")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
-    def style_header(ws, headers):
+    def sh(ws, headers, col_widths=None):
+        ws.row_dimensions[1].height = 24
         for i, h in enumerate(headers, 1):
             cell = ws.cell(1, i, h)
-            cell.font = header_font
-            cell.fill = header_fill
+            cell.font = h_font
+            cell.fill = h_fill
             cell.alignment = center
-            ws.column_dimensions[cell.column_letter].width = max(len(h) + 4, 14)
+            if col_widths and i <= len(col_widths):
+                ws.column_dimensions[cell.column_letter].width = col_widths[i-1]
+            else:
+                ws.column_dimensions[cell.column_letter].width = max(len(str(h)) + 4, 14)
 
-    def alt_fill(ws, row_idx):
+    def af(ws, row_idx):
         if row_idx % 2 == 0:
-            fill = PatternFill("solid", fgColor="EBF5FB")
+            fill = PatternFill("solid", fgColor="EDF2F7")
             for col in range(1, ws.max_column + 1):
                 ws.cell(row_idx, col).fill = fill
 
-    # ===== 1. DO'KONLAR varaqi =====
+    status_map = {"pending": "⏳ Kutilmoqda", "confirmed": "✅ Tasdiqlandi",
+                  "on_way": "🚗 Yo'lda", "delivered": "✅ Yetkazildi", "rejected": "❌ Rad etildi"}
+
+    # ===== 1. DO'KONLAR (TO'LIQ) =====
     ws1 = wb.active
-    ws1.title = "🏪 Do'konlar"
-    ws1.row_dimensions[1].height = 22
-    h1 = ["🆔 ID", "🏪 Do'kon nomi", "👤 Egasi TG ID", "📱 Telefon", "💳 Karta", "⏰ Ish vaqti",
-          "⭐ Reyting", "📦 Buyurtmalar soni", "💰 Jami daromad", "📊 Admin %", "📅 Yaratilgan", "🟢 Holat"]
-    style_header(ws1, h1)
+    ws1.title = "1-Do'konlar"
+    sh(ws1, ["🆔 ID", "🏪 Do'kon nomi", "👤 Egasi TG ID", "📱 Telefon", "💳 Karta raqami",
+             "👤 Karta egasi", "⏰ Ish vaqti", "⭐ Reyting", "📦 Jami buyurtma",
+             "💰 Jami daromad", "📊 Admin %", "📅 Yaratilgan", "🟢 Holat",
+             "🏖️ Ta'til tugashi"],
+            [8,20,14,14,18,16,14,10,14,16,10,16,12,16])
 
-    for row_idx, s in enumerate(shops, 2):
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total FROM orders WHERE shop_id=%s AND status='delivered'", (s['id'],))
-        sr = c2.fetchone()
-        conn2.close()
+    for ri, s in enumerate(shops, 2):
+        c2 = get_db()
+        cur2 = c2.cursor()
+        cur2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as tot FROM orders WHERE shop_id=%s AND status='delivered'", (s['id'],))
+        sr = cur2.fetchone()
+        cur2.execute("SELECT COUNT(*) as open_cnt FROM admin_logs WHERE details LIKE %s AND action='Do\\'kon ochildi'", (f"%{s['id']}%",))
+        c2.close()
 
-        ws1.cell(row_idx, 1, s['id'])
-        ws1.cell(row_idx, 2, s['name'])
-        ws1.cell(row_idx, 3, s['owner_tg_id'])
-        ws1.cell(row_idx, 4, s['phone'] or '')
-        ws1.cell(row_idx, 5, s['card_number'] or '')
-        ws1.cell(row_idx, 6, s['work_time'] or '')
-        ws1.cell(row_idx, 7, round(s['rating'], 2))
-        ws1.cell(row_idx, 8, sr['cnt'])
-        ws1.cell(row_idx, 9, sr['total'])
-        ws1.cell(row_idx, 10, s['admin_percent'])
-        ws1.cell(row_idx, 11, s['created_at'])
-        ws1.cell(row_idx, 12, '🟢 Ochiq' if s['is_open'] else '🔴 Yopiq')
-        alt_fill(ws1, row_idx)
+        ws1.cell(ri, 1, s['id'])
+        ws1.cell(ri, 2, s['name'])
+        ws1.cell(ri, 3, s['owner_tg_id'])
+        ws1.cell(ri, 4, s['phone'] or '')
+        ws1.cell(ri, 5, s['card_number'] or '')
+        ws1.cell(ri, 6, s.get('card_holder', '') or '')
+        ws1.cell(ri, 7, s['work_time'] or '')
+        ws1.cell(ri, 8, round(s['rating'], 2))
+        ws1.cell(ri, 9, sr['cnt'])
+        ws1.cell(ri, 10, sr['tot'])
+        ws1.cell(ri, 11, s['admin_percent'])
+        ws1.cell(ri, 12, s['created_at'])
+        ws1.cell(ri, 13, '🟢 Ochiq' if s['is_open'] else '🔴 Yopiq')
+        ws1.cell(ri, 14, s.get('vacation_until', '') or '')
+        af(ws1, ri)
 
-    # ===== 2. DO'KON BUYURTMALARI varaqi =====
-    ws_ob = wb.create_sheet("📦 Do'kon buyurtmalari")
-    ws_ob.row_dimensions[1].height = 22
-    h_ob = ["📦 Buyurtma ID", "🏪 Do'kon", "👤 Mijoz ismi", "📱 Mijoz tel", "🛍️ Mahsulotlar",
-            "💰 Summa", "💳 To'lov", "📍 Manzil", "📊 Holat", "📅 Buyurtma vaqti",
-            "✅ Tasdiqlangan", "🚚 Yetkazilgan", "🎟️ Promo", "🔖 Chegirma"]
-    style_header(ws_ob, h_ob)
+    # ===== 2. DO'KON BUYURTMALARI (TO'LIQ) =====
+    ws2 = wb.create_sheet("2-Buyurtmalar")
+    sh(ws2, ["📦 ID", "🏪 Do'kon", "👤 Mijoz ismi", "📱 Telefon", "🆔 Mijoz TG",
+             "🛍️ Mahsulotlar", "💰 Summa", "🔖 Chegirma", "🎟️ Promo",
+             "💳 To'lov", "📍 Manzil", "📊 Holat", "🚚 Kuryer",
+             "📅 Buyurtma", "✅ Tasdiqlandi", "🚗 Yo'lga chiqdi", "✅ Yetkazildi",
+             "🌐 Manba"],
+            [10,18,16,14,13,30,14,12,12,10,20,14,16,16,16,16,16,12])
 
-    for row_idx, o in enumerate(orders, 2):
+    for ri, o in enumerate(orders, 2):
         user = get_user(o['user_tg_id'])
-        status_map = {"pending": "⏳ Kutilmoqda", "confirmed": "✅ Tasdiqlandi",
-                      "on_way": "🚗 Yo'lda", "delivered": "✅ Yetkazildi", "rejected": "❌ Rad etildi"}
-        ws_ob.cell(row_idx, 1, o['order_uid'])
-        ws_ob.cell(row_idx, 2, o['shop_name'] or '')
-        ws_ob.cell(row_idx, 3, user['full_name'] if user else 'Telefon buyurtma')
-        ws_ob.cell(row_idx, 4, user['phone'] if user else '')
-        ws_ob.cell(row_idx, 5, o['products'])
-        ws_ob.cell(row_idx, 6, o['total_sum'])
-        ws_ob.cell(row_idx, 7, o['payment_type'])
-        ws_ob.cell(row_idx, 8, o['address'])
-        ws_ob.cell(row_idx, 9, status_map.get(o['status'], o['status']))
-        ws_ob.cell(row_idx, 10, o['created_at'])
-        ws_ob.cell(row_idx, 11, o['confirmed_at'] or '')
-        ws_ob.cell(row_idx, 12, o['delivered_at'] or '')
-        ws_ob.cell(row_idx, 13, o['promo_code'] or '')
-        ws_ob.cell(row_idx, 14, o['discount'] or 0)
-        alt_fill(ws_ob, row_idx)
+        ws2.cell(ri, 1, o['order_uid'])
+        ws2.cell(ri, 2, o['shop_name'] or '')
+        ws2.cell(ri, 3, user['full_name'] if user else (o.get('address','')[:20] if o['user_tg_id']==0 else ''))
+        ws2.cell(ri, 4, user['phone'] if user else '')
+        ws2.cell(ri, 5, o['user_tg_id'] if o['user_tg_id'] != 0 else 'Telefon')
+        ws2.cell(ri, 6, o['products'])
+        ws2.cell(ri, 7, o['total_sum'])
+        ws2.cell(ri, 8, o.get('discount') or 0)
+        ws2.cell(ri, 9, o.get('promo_code') or '')
+        ws2.cell(ri, 10, o['payment_type'])
+        ws2.cell(ri, 11, o['address'])
+        ws2.cell(ri, 12, status_map.get(o['status'], o['status']))
+        ws2.cell(ri, 13, o.get('courier_name') or '')
+        ws2.cell(ri, 14, o['created_at'])
+        ws2.cell(ri, 15, o.get('confirmed_at') or '')
+        ws2.cell(ri, 16, o.get('on_way_at') or '')
+        ws2.cell(ri, 17, o.get('delivered_at') or '')
+        ws2.cell(ri, 18, o.get('source') or 'normal')
+        af(ws2, ri)
 
-    # ===== 3. KURYERLAR varaqi =====
-    ws2 = wb.create_sheet("🚚 Kuryerlar")
-    ws2.row_dimensions[1].height = 22
-    h2 = ["🆔 ID", "👤 Ism", "📱 Telefon", "🏪 Do'kon", "📦 Yetkazgan", "💰 Jami summa",
-          "🟢 Holat", "🔴 Band/Bo'sh", "📅 Qo'shilgan"]
-    style_header(ws2, h2)
+    # ===== 3. KURYERLAR (TO'LIQ) =====
+    ws3 = wb.create_sheet("3-Kuryerlar")
+    sh(ws3, ["🆔 ID", "👤 Ism", "📱 Telefon", "🆔 TG ID", "🏪 Do'kon",
+             "📦 Yetkazgan", "💰 Jami summa", "⏱️ Band vaqti (daq)",
+             "🟢 Holat", "🔴 Band/Bo'sh", "📅 Qo'shilgan"],
+            [8,18,14,13,18,12,14,16,12,12,16])
 
-    for row_idx, cur in enumerate(couriers, 2):
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total FROM orders WHERE courier_tg_id=%s AND status='delivered'", (cur['tg_id'],))
-        cr = c2.fetchone()
-        conn2.close()
+    for ri, cur in enumerate(couriers, 2):
+        c2 = get_db()
+        cur2 = c2.cursor()
+        cur2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as tot FROM orders WHERE courier_tg_id=%s AND status='delivered'", (cur['tg_id'],))
+        cr = cur2.fetchone()
+        # Band bo'lgan buyurtmalar vaqtini hisoblash
+        cur2.execute("SELECT created_at, delivered_at FROM orders WHERE courier_tg_id=%s AND status='delivered' AND delivered_at IS NOT NULL", (cur['tg_id'],))
+        time_orders = cur2.fetchall()
+        c2.close()
+        busy_min = 0
+        for to in time_orders:
+            try:
+                t1 = datetime.strptime(to['created_at'], "%d.%m.%Y %H:%M")
+                t2 = datetime.strptime(to['delivered_at'], "%d.%m.%Y %H:%M")
+                busy_min += int((t2-t1).total_seconds()/60)
+            except: pass
 
-        ws2.cell(row_idx, 1, cur['id'])
-        ws2.cell(row_idx, 2, cur['full_name'])
-        ws2.cell(row_idx, 3, cur['phone'])
-        ws2.cell(row_idx, 4, cur['shop_name'] or '')
-        ws2.cell(row_idx, 5, cr['cnt'])
-        ws2.cell(row_idx, 6, cr['total'])
-        ws2.cell(row_idx, 7, '🚫 Bloklangan' if cur['is_blocked'] else '✅ Faol')
-        ws2.cell(row_idx, 8, '🔴 Band' if cur['is_busy'] else '🟢 Bo\'sh')
-        ws2.cell(row_idx, 9, cur['registered_at'] or '')
-        alt_fill(ws2, row_idx)
+        ws3.cell(ri, 1, cur['id'])
+        ws3.cell(ri, 2, cur['full_name'])
+        ws3.cell(ri, 3, cur['phone'])
+        ws3.cell(ri, 4, cur['tg_id'])
+        ws3.cell(ri, 5, cur['shop_name'] or '')
+        ws3.cell(ri, 6, cr['cnt'])
+        ws3.cell(ri, 7, cr['tot'])
+        ws3.cell(ri, 8, busy_min)
+        ws3.cell(ri, 9, '🚫 Bloklangan' if cur['is_blocked'] else '✅ Faol')
+        ws3.cell(ri, 10, '🔴 Band' if cur['is_busy'] else '🟢 Bo\'sh')
+        ws3.cell(ri, 11, cur.get('registered_at') or '')
+        af(ws3, ri)
 
-    # ===== 4. MIJOZLAR varaqi =====
-    ws3 = wb.create_sheet("👥 Mijozlar")
-    ws3.row_dimensions[1].height = 22
-    h3 = ["🆔 ID", "👤 Ism", "📱 Telefon", "💬 Username", "🆔 TG ID",
-          "📦 Buyurtmalar", "💰 Jami xarid", "🕐 Oxirgi buyurtma", "📅 Ro'yxat", "🟢 Holat"]
-    style_header(ws3, h3)
+    # ===== 4. MIJOZLAR (TO'LIQ) =====
+    ws4 = wb.create_sheet("4-Mijozlar")
+    sh(ws4, ["🆔 ID", "👤 Ism", "📱 Telefon", "💬 Username", "🆔 TG ID",
+             "📦 Jami buyurtma", "💰 Jami xarid", "🕐 Oxirgi buyurtma",
+             "📅 Ro'yxat", "🟢 Holat"],
+            [8,18,14,14,13,14,14,16,16,12])
 
-    for row_idx, u in enumerate(users, 2):
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as total, MAX(created_at) as last FROM orders WHERE user_tg_id=%s AND status='delivered'", (u['tg_id'],))
-        ur = c2.fetchone()
-        conn2.close()
+    for ri, u in enumerate(users, 2):
+        c2 = get_db()
+        cur2 = c2.cursor()
+        cur2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as tot, MAX(created_at) as last FROM orders WHERE user_tg_id=%s AND status='delivered'", (u['tg_id'],))
+        ur = cur2.fetchone()
+        c2.close()
+        ws4.cell(ri, 1, u['id'])
+        ws4.cell(ri, 2, u['full_name'])
+        ws4.cell(ri, 3, u['phone'])
+        ws4.cell(ri, 4, u.get('username') or '')
+        ws4.cell(ri, 5, u['tg_id'])
+        ws4.cell(ri, 6, ur['cnt'])
+        ws4.cell(ri, 7, ur['tot'])
+        ws4.cell(ri, 8, ur['last'] or '')
+        ws4.cell(ri, 9, u['registered_at'])
+        ws4.cell(ri, 10, '🚫 Bloklangan' if u['is_blocked'] else '✅ Faol')
+        af(ws4, ri)
 
-        ws3.cell(row_idx, 1, u['id'])
-        ws3.cell(row_idx, 2, u['full_name'])
-        ws3.cell(row_idx, 3, u['phone'])
-        ws3.cell(row_idx, 4, u['username'] or '')
-        ws3.cell(row_idx, 5, u['tg_id'])
-        ws3.cell(row_idx, 6, ur['cnt'])
-        ws3.cell(row_idx, 7, ur['total'])
-        ws3.cell(row_idx, 8, ur['last'] or '')
-        ws3.cell(row_idx, 9, u['registered_at'])
-        ws3.cell(row_idx, 10, '🚫 Bloklangan' if u['is_blocked'] else '✅ Faol')
-        alt_fill(ws3, row_idx)
+    # ===== 5. CHATLAR =====
+    ws5 = wb.create_sheet("5-Chatlar")
+    sh(ws5, ["📤 Kimdan (TG)", "📤 Kimdan (Ism)", "📥 Kimga (TG)", "📥 Kimga (Ism)",
+             "💬 Xabar", "🏷️ Tur", "📦 Buyurtma", "📅 Vaqt"],
+            [13,18,13,18,40,16,12,16])
 
-    # ===== 5. CHATLAR varaqi =====
-    ws4 = wb.create_sheet("💬 Chatlar")
-    ws4.row_dimensions[1].height = 22
-    h4 = ["📤 Kimdan (TG ID)", "📤 Kimdan (Ism)", "📥 Kimga (TG ID)", "📥 Kimga (Ism)",
-          "💬 Xabar", "🏷️ Tur", "📦 Buyurtma ID", "📅 Vaqt"]
-    style_header(ws4, h4)
+    for ri, ch in enumerate(chats, 2):
+        ws5.cell(ri, 1, ch['from_tg_id'])
+        ws5.cell(ri, 2, ch.get('from_name') or '')
+        ws5.cell(ri, 3, ch['to_tg_id'])
+        ws5.cell(ri, 4, ch.get('to_name') or '')
+        ws5.cell(ri, 5, ch['message'])
+        ws5.cell(ri, 6, ch['chat_type'])
+        ws5.cell(ri, 7, ch.get('order_id') or '')
+        ws5.cell(ri, 8, ch['created_at'])
+        af(ws5, ri)
 
-    for row_idx, ch in enumerate(chats, 2):
-        ws4.cell(row_idx, 1, ch['from_tg_id'])
-        ws4.cell(row_idx, 2, ch['from_name'] or '')
-        ws4.cell(row_idx, 3, ch['to_tg_id'])
-        ws4.cell(row_idx, 4, ch['to_name'] or '')
-        ws4.cell(row_idx, 5, ch['message'])
-        ws4.cell(row_idx, 6, ch['chat_type'])
-        ws4.cell(row_idx, 7, ch['order_id'] or '')
-        ws4.cell(row_idx, 8, ch['created_at'])
-        alt_fill(ws4, row_idx)
+    # ===== 6. PROMO KODLAR =====
+    ws6 = wb.create_sheet("6-Promo kodlar")
+    sh(ws6, ["🎟️ Kod", "💰 Chegirma", "📊 Tur", "💵 Min summa",
+             "📅 Muddat", "🔢 Max", "🔢 Ishlatilgan", "🟢 Holat", "📅 Yaratilgan"],
+            [14,12,12,14,14,10,14,12,16])
 
-    # ===== 6. ADMIN LOGLARI varaqi =====
-    ws5 = wb.create_sheet("🔐 Admin loglari")
-    ws5.row_dimensions[1].height = 22
-    h5 = ["🆔 Admin TG ID", "⚙️ Harakat", "📝 Tafsilot", "📅 Vaqt"]
-    style_header(ws5, h5)
+    for ri, p in enumerate(promos, 2):
+        ws6.cell(ri, 1, p['code'])
+        ws6.cell(ri, 2, p['discount_value'])
+        ws6.cell(ri, 3, p['discount_type'])
+        ws6.cell(ri, 4, p.get('min_order', 0) or 0)
+        ws6.cell(ri, 5, p.get('expires_at') or 'Cheksiz')
+        ws6.cell(ri, 6, p.get('max_uses', 0) or 0)
+        ws6.cell(ri, 7, p.get('used_count', 0) or 0)
+        ws6.cell(ri, 8, '✅ Faol' if p.get('is_active', 1) else '🔴 Nofaol')
+        ws6.cell(ri, 9, p.get('created_at') or '')
+        af(ws6, ri)
 
-    for row_idx, lg in enumerate(admin_logs, 2):
-        ws5.cell(row_idx, 1, lg['admin_tg_id'])
-        ws5.cell(row_idx, 2, lg['action'])
-        ws5.cell(row_idx, 3, lg['details'] or '')
-        ws5.cell(row_idx, 4, lg['created_at'])
-        alt_fill(ws5, row_idx)
+    # ===== 7. MOLIYA =====
+    ws7 = wb.create_sheet("7-Moliya")
+    sh(ws7, ["🏪 Do'kon", "📦 Yetkazilgan", "💰 Jami summa", "💵 Naqd",
+             "💳 Karta", "📊 Admin %", "💰 Admin ulushi"],
+            [22,14,16,14,14,12,16])
 
-    # ===== 7. UMUMIY STATISTIKA varaqi =====
-    ws6 = wb.create_sheet("📊 Statistika")
-    ws6.row_dimensions[1].height = 22
-    stat_header_font = Font(bold=True, size=12)
+    for ri, s in enumerate(shops, 2):
+        c2 = get_db()
+        cur2 = c2.cursor()
+        cur2.execute("SELECT COUNT(*) as cnt, COALESCE(SUM(total_sum),0) as tot FROM orders WHERE shop_id=%s AND status='delivered'", (s['id'],))
+        sr = cur2.fetchone()
+        cur2.execute("SELECT COALESCE(SUM(total_sum),0) as tot FROM orders WHERE shop_id=%s AND status='delivered' AND payment_type='naqd'", (s['id'],))
+        naqd = cur2.fetchone()
+        cur2.execute("SELECT COALESCE(SUM(total_sum),0) as tot FROM orders WHERE shop_id=%s AND status='delivered' AND payment_type='karta'", (s['id'],))
+        karta = cur2.fetchone()
+        c2.close()
+        admin_share = sr['tot'] * s['admin_percent'] / 100
+        ws7.cell(ri, 1, s['name'])
+        ws7.cell(ri, 2, sr['cnt'])
+        ws7.cell(ri, 3, sr['tot'])
+        ws7.cell(ri, 4, naqd['tot'])
+        ws7.cell(ri, 5, karta['tot'])
+        ws7.cell(ri, 6, s['admin_percent'])
+        ws7.cell(ri, 7, round(admin_share, 0))
+        af(ws7, ri)
 
-    stats = [
+    # ===== 8. TOP MIJOZLAR =====
+    ws8 = wb.create_sheet("8-Top mijozlar")
+    sh(ws8, ["🏆 O'rin", "👤 Ism", "📱 Telefon", "🆔 TG ID",
+             "📦 Buyurtmalar", "💰 Jami xarid"],
+            [8,20,14,13,14,16])
+
+    top_users = sorted(
+        [(u, sum(o['total_sum'] for o in orders if o['user_tg_id']==u['tg_id'] and o['status']=='delivered'),
+          sum(1 for o in orders if o['user_tg_id']==u['tg_id'] and o['status']=='delivered'))
+         for u in users],
+        key=lambda x: x[2], reverse=True
+    )[:20]
+
+    medals = {1:'🥇', 2:'🥈', 3:'🥉'}
+    for ri, (u, tot, cnt) in enumerate(top_users, 2):
+        rank = ri - 1
+        ws8.cell(ri, 1, medals.get(rank, str(rank)))
+        ws8.cell(ri, 2, u['full_name'])
+        ws8.cell(ri, 3, u['phone'])
+        ws8.cell(ri, 4, u['tg_id'])
+        ws8.cell(ri, 5, cnt)
+        ws8.cell(ri, 6, tot)
+        af(ws8, ri)
+
+    # ===== 9. MUAMMOLI BUYURTMALAR =====
+    ws9 = wb.create_sheet("9-Muammoli")
+    sh(ws9, ["📦 ID", "🏪 Do'kon", "👤 Mijoz", "📱 Tel", "🛍️ Mahsulot",
+             "💰 Summa", "📊 Holat", "🚚 Kuryer", "⏱️ Kutgan (daq)",
+             "📅 Buyurtma vaqti", "💬 Chatlar soni"],
+            [10,18,16,14,24,12,14,16,14,16,12])
+
+    problem_orders = [o for o in orders if o['status'] in ('pending', 'rejected')]
+    for ri, o in enumerate(problem_orders, 2):
+        user = get_user(o['user_tg_id'])
+        wait_min = 0
+        try:
+            created = datetime.strptime(o['created_at'], "%d.%m.%Y %H:%M")
+            wait_min = int((datetime.now() - created).total_seconds() / 60)
+        except: pass
+        chat_cnt = sum(1 for ch in chats if str(o['order_uid']) in str(ch.get('order_id','')))
+
+        ws9.cell(ri, 1, o['order_uid'])
+        ws9.cell(ri, 2, o['shop_name'] or '')
+        ws9.cell(ri, 3, user['full_name'] if user else '')
+        ws9.cell(ri, 4, user['phone'] if user else '')
+        ws9.cell(ri, 5, o['products'])
+        ws9.cell(ri, 6, o['total_sum'])
+        ws9.cell(ri, 7, status_map.get(o['status'], o['status']))
+        ws9.cell(ri, 8, o.get('courier_name') or '')
+        ws9.cell(ri, 9, wait_min)
+        ws9.cell(ri, 10, o['created_at'])
+        ws9.cell(ri, 11, chat_cnt)
+        af(ws9, ri)
+
+    # ===== 10. XABAR YUBORISH LOGLARI =====
+    ws10 = wb.create_sheet("10-Xabarlar")
+    sh(ws10, ["🆔 Admin TG", "⚙️ Harakat", "📝 Tafsilot", "📅 Vaqt"],
+            [13,25,40,16])
+    broadcast_logs = [lg for lg in admin_logs if 'xabar' in lg['action'].lower() or 'broadcast' in lg['action'].lower()]
+    for ri, lg in enumerate(broadcast_logs, 2):
+        ws10.cell(ri, 1, lg['admin_tg_id'])
+        ws10.cell(ri, 2, lg['action'])
+        ws10.cell(ri, 3, lg.get('details') or '')
+        ws10.cell(ri, 4, lg['created_at'])
+        af(ws10, ri)
+
+    # ===== 11. ADMIN LOGLARI =====
+    ws11 = wb.create_sheet("11-Admin loglari")
+    sh(ws11, ["🆔 Admin TG ID", "⚙️ Harakat", "📝 Tafsilot", "📅 Vaqt"],
+            [13,25,40,16])
+    for ri, lg in enumerate(admin_logs, 2):
+        ws11.cell(ri, 1, lg['admin_tg_id'])
+        ws11.cell(ri, 2, lg['action'])
+        ws11.cell(ri, 3, lg.get('details') or '')
+        ws11.cell(ri, 4, lg['created_at'])
+        af(ws11, ri)
+
+    # ===== 12. UMUMIY STATISTIKA =====
+    ws12 = wb.create_sheet("12-Statistika")
+    ws12.column_dimensions['A'].width = 36
+    ws12.column_dimensions['B'].width = 22
+    sf = Font(bold=True, size=11)
+    tf = Font(bold=True, size=14, color="1A3C5E")
+
+    delivered_o = [o for o in orders if o['status'] == 'delivered']
+    pending_o = [o for o in orders if o['status'] == 'pending']
+    rejected_o = [o for o in orders if o['status'] == 'rejected']
+    today_str = datetime.now().strftime("%d.%m.%Y")
+    today_del = [o for o in delivered_o if o['created_at'].startswith(today_str)]
+
+    rows_stat = [
         ("📊 BOT UMUMIY STATISTIKASI", ""),
         ("", ""),
         ("👥 Jami mijozlar", len(users)),
         ("🏪 Jami do'konlar", len(shops)),
         ("🚚 Jami kuryerlar", len(couriers)),
+        ("🎟️ Jami promo kodlar", len(promos)),
         ("", ""),
         ("📦 Jami buyurtmalar", len(orders)),
-    ]
-
-    delivered = [o for o in orders if o['status'] == 'delivered']
-    pending_o = [o for o in orders if o['status'] == 'pending']
-    rejected_o = [o for o in orders if o['status'] == 'rejected']
-
-    stats += [
-        ("✅ Yetkazilgan", len(delivered)),
+        ("✅ Yetkazilgan", len(delivered_o)),
         ("⏳ Kutilmoqda", len(pending_o)),
         ("❌ Rad etilgan", len(rejected_o)),
         ("", ""),
-        ("💰 Jami daromad (yetkazilgan)", sum(o['total_sum'] for o in delivered)),
-        ("📅 Bugungi daromad", sum(o['total_sum'] for o in delivered if o['created_at'].startswith(datetime.now().strftime("%d.%m.%Y")))),
+        ("💰 Jami daromad", f"{sum(o['total_sum'] for o in delivered_o):,.0f} so'm"),
+        ("📅 Bugungi daromad", f"{sum(o['total_sum'] for o in today_del):,.0f} so'm"),
+        ("📅 Bugungi buyurtmalar", len(today_del)),
+        ("", ""),
+        ("📅 Eksport vaqti", now_str()),
     ]
-
-    for row_idx, (key, val) in enumerate(stats, 1):
-        ws6.cell(row_idx, 1, key).font = stat_header_font
-        ws6.cell(row_idx, 2, val)
-        ws6.column_dimensions['A'].width = 35
-        ws6.column_dimensions['B'].width = 20
+    for ri, (k, v) in enumerate(rows_stat, 1):
+        cell_k = ws12.cell(ri, 1, k)
+        cell_v = ws12.cell(ri, 2, v)
+        if k and k != "":
+            cell_k.font = sf if ri > 2 else tf
+        if v and v != "":
+            cell_v.font = sf
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -3851,14 +4311,19 @@ async def excel_export(message: types.Message):
         types.BufferedInputFile(buf.read(), filename=filename),
         caption=(
             f"📥 To'liq Excel eksport tayyor!\n\n"
-            f"📋 Varaqlar:\n"
-            f"  🏪 Do'konlar — to'liq ma'lumot\n"
-            f"  📦 Do'kon buyurtmalari — kim, qachon, nima\n"
-            f"  🚚 Kuryerlar — to'liq ma'lumot\n"
-            f"  👥 Mijozlar — barcha xaridlar bilan\n"
-            f"  💬 Chatlar — barcha suhbatlar\n"
-            f"  🔐 Admin loglari — kim nima qildi\n"
-            f"  📊 Statistika — umumiy ko'rsatkichlar\n\n"
+            f"📋 12 ta varaq:\n"
+            f"  1. 🏪 Do'konlar — to'liq + daromad\n"
+            f"  2. 📦 Buyurtmalar — barcha ma'lumot\n"
+            f"  3. 🚚 Kuryerlar — band vaqti bilan\n"
+            f"  4. 👥 Mijozlar — xaridlar bilan\n"
+            f"  5. 💬 Chatlar — barcha suhbatlar\n"
+            f"  6. 🎟️ Promo kodlar — holat bilan\n"
+            f"  7. 💰 Moliya — do'kon bo'yicha\n"
+            f"  8. 🏆 Top 20 mijoz\n"
+            f"  9. ⚠️ Muammoli buyurtmalar\n"
+            f"  10. 📣 Xabar yuborish loglari\n"
+            f"  11. 🔐 Admin loglari\n"
+            f"  12. 📊 Umumiy statistika\n\n"
             f"📅 {now_str()}"
         )
     )
@@ -4285,6 +4750,24 @@ async def admin_end_chat(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     log_admin_action(callback.from_user.id, "Mijoz bilan chat tugatdi", f"Mijoz TG: {user_tg_id}")
     await callback.message.answer("✅ Chat tugatildi. Barcha xabarlar 'Chatlar' va Excel'da saqlanadi.", reply_markup=admin_main_kb())
+
+
+# --- MIJOZ → ADMIN JAVOB (inline tugma orqali) ---
+@dp.callback_query(F.data == "reply_to_admin_direct")
+async def reply_to_admin_direct(callback: types.CallbackQuery, state: FSMContext):
+    tg_id = callback.from_user.id
+    admin_id = ADMIN_IDS[0]
+    chat_set(tg_id, admin_id, "user_admin", "")
+    chat_set(admin_id, tg_id, "admin_user", "")
+    await state.set_state(ChatState.chatting)
+    await callback.message.answer(
+        "💬 Admin bilan chat boshlandi. Yozing:",
+        reply_markup=chat_end_kb()
+    )
+    user = get_user(tg_id)
+    label = "Mijoz " + (user["full_name"] if user else str(tg_id))
+    await notify_partner_chat_started(admin_id, tg_id, label, "admin_user")
+    await callback.answer()
 
 
 # --- ADMIN LOG VIEWER ---

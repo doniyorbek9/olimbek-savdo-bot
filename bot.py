@@ -1,27 +1,16 @@
 import os
-from flask import Flask
-from threading import Thread
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot ishlayapti!"
-
-def run():
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-
-Thread(target=run).start()
-
 import asyncio
 import logging
 import random
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import os
 import io
 from datetime import datetime, date, timedelta
+from threading import Thread
+
+# === WEB PANEL - ENG BIRINCHI IMPORT ===
+from admin_panel import app as web_app
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -36,7 +25,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from PIL import Image, ImageDraw, ImageFont
-from admin_panel import app as web_app
 
 # ===================== CONFIG =====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -462,6 +450,7 @@ def admin_main_kb():
     kb.button(text="📱 Buyurtma berish")
     kb.button(text="🗑️ Bot ma'lumotlari")
     kb.button(text="🏆 Top mijozlar")
+    kb.button(text="🌐 Web Panel")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 
@@ -482,6 +471,19 @@ def location_kb():
     kb.button(text="⬅️ Orqaga")
     kb.adjust(1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+# ===================== WEB PANEL TUGMASI =====================
+@dp.message(F.text == "🌐 Web Panel")
+async def web_panel_link(message: types.Message):
+    if not is_admin(message.from_user.id):
+        return
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🌐 Web Panelni ochish", url="https://olimbek-savdo-bot-production.up.railway.app/admin")
+    await message.answer(
+        "🌐 Admin Web Panel:\nhttps://olimbek-savdo-bot-production.up.railway.app/admin\n\n"
+        "Login: ADMIN_WEB_USER\nParol: ADMIN_WEB_PASS (Railway environment variables)",
+        reply_markup=kb.as_markup()
+    )
 
 # ===================== RECEIPT GENERATOR =====================
 def generate_receipt(order_data, user_data, shop_data):
@@ -2337,13 +2339,6 @@ def chat_remove(tg_id):
     conn.commit()
     conn.close()
 
-def chat_clear_all():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM active_sessions")
-    conn.commit()
-    conn.close()
-
 def chat_end_kb():
     kb = ReplyKeyboardBuilder()
     kb.button(text="🔴 Chatni tugatish")
@@ -3506,7 +3501,7 @@ async def finance_detail(callback: types.CallbackQuery):
 
     await callback.message.answer(text)
 
-# --- EXCEL EKSPORT (TUZATILGAN) ---
+# --- EXCEL EKSPORT ---
 @dp.message(F.text == "📥 Excel eksport")
 async def excel_export(message: types.Message):
     if not is_admin(message.from_user.id):
@@ -3516,7 +3511,6 @@ async def excel_export(message: types.Message):
     await message.answer("⏳ Excel fayl tayyorlanmoqda...")
 
     try:
-        # Barcha ma'lumotlarni BIR MARTA olish
         conn = get_db()
         c = conn.cursor()
 
@@ -3574,12 +3568,8 @@ async def excel_export(message: types.Message):
         c.execute("SELECT * FROM admin_logs ORDER BY created_at DESC LIMIT 500")
         admin_logs = c.fetchall()
 
-        c.execute("SELECT * FROM chats ORDER BY created_at DESC LIMIT 500")
-        chats = c.fetchall()
-
         conn.close()
 
-        # Excel yaratish
         wb = openpyxl.Workbook()
 
         h_font = Font(bold=True, color="FFFFFF", size=11)
@@ -3599,7 +3589,6 @@ async def excel_export(message: types.Message):
             "on_way": "Yo'lda", "delivered": "Yetkazildi", "rejected": "Rad etildi"
         }
 
-        # 1. DO'KONLAR
         ws1 = wb.active
         ws1.title = "Do'konlar"
         make_header(ws1, ["ID", "Nom", "Egasi TG", "Tel", "Karta", "Ish vaqti",
@@ -3619,7 +3608,6 @@ async def excel_export(message: types.Message):
             ws1.cell(i, 11, 'Ochiq' if s['is_open'] else 'Yopiq')
             ws1.cell(i, 12, s['created_at'])
 
-        # 2. BUYURTMALAR
         ws2 = wb.create_sheet("Buyurtmalar")
         make_header(ws2, ["ID", "Do'kon", "Mijoz", "Tel", "Mahsulotlar",
                            "Summa", "Chegirma", "To'lov", "Manzil", "Holat",
@@ -3641,7 +3629,6 @@ async def excel_export(message: types.Message):
             ws2.cell(i, 13, o['delivered_at'] or '')
             ws2.cell(i, 14, o['source'] or 'normal')
 
-        # 3. KURYERLAR
         ws3 = wb.create_sheet("Kuryerlar")
         make_header(ws3, ["ID", "Ism", "Tel", "TG ID", "Do'kon",
                            "Yetkazgan", "Jami summa", "Holat", "Qo'shilgan"],
@@ -3657,7 +3644,6 @@ async def excel_export(message: types.Message):
             ws3.cell(i, 8, 'Bloklangan' if cur['is_blocked'] else 'Faol')
             ws3.cell(i, 9, cur['registered_at'] or '')
 
-        # 4. MIJOZLAR
         ws4 = wb.create_sheet("Mijozlar")
         make_header(ws4, ["ID", "Ism", "Tel", "Username", "TG ID",
                            "Buyurtmalar", "Jami xarid", "Ro'yxat", "Holat"],
@@ -3673,7 +3659,6 @@ async def excel_export(message: types.Message):
             ws4.cell(i, 8, u['registered_at'])
             ws4.cell(i, 9, 'Bloklangan' if u['is_blocked'] else 'Faol')
 
-        # 5. PROMO KODLAR
         ws5 = wb.create_sheet("Promo kodlar")
         make_header(ws5, ["Kod", "Chegirma", "Tur", "Min summa",
                            "Muddat", "Limit", "Ishlatilgan", "Yaratilgan"],
@@ -3688,7 +3673,6 @@ async def excel_export(message: types.Message):
             ws5.cell(i, 7, p['used_count'] or 0)
             ws5.cell(i, 8, p['created_at'] or '')
 
-        # 6. ADMIN LOGLARI
         ws6 = wb.create_sheet("Admin loglari")
         make_header(ws6, ["Admin TG", "Harakat", "Tafsilot", "Vaqt"],
                     [13, 25, 40, 16])
@@ -3698,7 +3682,6 @@ async def excel_export(message: types.Message):
             ws6.cell(i, 3, lg['details'] or '')
             ws6.cell(i, 4, lg['created_at'])
 
-        # 7. MOLIYA XULOSASI
         ws7 = wb.create_sheet("Moliya")
         make_header(ws7, ["Do'kon", "Buyurtmalar", "Daromad", "Admin %", "Admin ulushi"],
                     [22, 14, 16, 12, 16])
@@ -3710,34 +3693,6 @@ async def excel_export(message: types.Message):
             ws7.cell(i, 4, s['admin_percent'])
             ws7.cell(i, 5, round(admin_share, 0))
 
-        # 8. STATISTIKA
-        ws8 = wb.create_sheet("Statistika")
-        ws8.column_dimensions['A'].width = 32
-        ws8.column_dimensions['B'].width = 20
-        sf = Font(bold=True, size=11)
-
-        delivered_orders = [o for o in orders if o['status'] == 'delivered']
-        today_str = datetime.now().strftime("%d.%m.%Y")
-        today_del = [o for o in delivered_orders if o['created_at'] and o['created_at'].startswith(today_str)]
-
-        stats = [
-            ("BOT STATISTIKASI", ""),
-            ("", ""),
-            ("Jami mijozlar", len(users)),
-            ("Jami do'konlar", len(shops)),
-            ("Jami kuryerlar", len(couriers)),
-            ("Jami buyurtmalar", len(orders)),
-            ("Yetkazilgan", len(delivered_orders)),
-            ("Bugungi buyurtmalar", len(today_del)),
-            ("Jami daromad (so'm)", f"{sum(o['total_sum'] for o in delivered_orders):,.0f}"),
-            ("Bugungi daromad (so'm)", f"{sum(o['total_sum'] for o in today_del):,.0f}"),
-            ("", ""),
-            ("Eksport vaqti", now_str()),
-        ]
-        for ri, (k, v) in enumerate(stats, 1):
-            ws8.cell(ri, 1, k).font = sf
-            ws8.cell(ri, 2, v).font = sf
-
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)
@@ -3745,22 +3700,12 @@ async def excel_export(message: types.Message):
         filename = f"olimbek_savdo_{datetime.now().strftime('%d%m%Y_%H%M')}.xlsx"
         await message.answer_document(
             types.BufferedInputFile(buf.read(), filename=filename),
-            caption=(f"📥 Excel eksport tayyor!\n\n"
-                     f"8 ta varaq:\n"
-                     f"1. Do'konlar\n"
-                     f"2. Buyurtmalar\n"
-                     f"3. Kuryerlar\n"
-                     f"4. Mijozlar\n"
-                     f"5. Promo kodlar\n"
-                     f"6. Admin loglari\n"
-                     f"7. Moliya xulosasi\n"
-                     f"8. Statistika\n\n"
-                     f"📅 {now_str()}")
+            caption=f"📥 Excel eksport tayyor!\n📅 {now_str()}"
         )
 
     except Exception as e:
         logger.error(f"Excel eksport xatosi: {e}", exc_info=True)
-        await message.answer(f"❌ Excel tayyorlashda xatolik:\n{e}\n\nAdmin loglarni tekshiring.")
+        await message.answer(f"❌ Excel tayyorlashda xatolik:\n{e}")
 
 # --- PROMO KODLAR ---
 @dp.message(F.text == "🎟️ Promo kodlar")
@@ -4230,7 +4175,6 @@ async def check_vacations():
                 except:
                     pass
 
-            # Ish vaqtiga qarab avtomatik ochish/yopish
             now_time = datetime.now().strftime("%H:%M")
             c.execute("SELECT id, owner_tg_id, name, work_time, is_open, vacation_until FROM shops WHERE work_time IS NOT NULL AND work_time != ''")
             time_shops = c.fetchall()
@@ -4264,23 +4208,24 @@ async def check_vacations():
             logger.error(f"check_vacations: {e}")
         await asyncio.sleep(3600)
 
-# --- MAIN ---
+# ===================== MAIN =====================
 async def main():
     init_db()
+
+    # === WEB PANEL - THREAD SIFATIDA ISHGA TUSHURISH ===
+    def run_web():
+        port = int(os.environ.get('PORT', 8080))
+        web_app.run(host='0.0.0.0', port=port, use_reloader=False, debug=False)
+
+    Thread(target=run_web, daemon=True).start()
+    logger.info("✅ Web panel thread ishga tushdi")
+
     asyncio.create_task(check_vacations())
     asyncio.create_task(check_stuck_orders())
     asyncio.create_task(check_user_order_timeout())
+
+    logger.info("🤖 Bot ishga tushdi!")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
-# === ADMIN WEB PANEL ===
-from admin_panel import app as web_app
-from threading import Thread
-
-def run_web():
-    port = int(os.environ.get('PORT', 8080))
-    web_app.run(host='0.0.0.0', port=port)
-
-Thread(target=run_web, daemon=True).start()

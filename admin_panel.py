@@ -1173,17 +1173,28 @@ function fmtNum(n){return Number(n||0).toLocaleString('uz-UZ');}
 
 // ===== DASHBOARD =====
 async function loadDashboard(){
-  const d = await api('/admin/api/dashboard');
-  document.getElementById('s-users').textContent = d.users;
-  document.getElementById('s-shops').textContent = d.shops;
-  document.getElementById('s-shops-open').textContent = d.shops_open+' ta ochiq';
-  document.getElementById('s-couriers').textContent = d.couriers;
-  document.getElementById('s-orders').textContent = d.total_orders;
+  let d;
+  try {
+    d = await api('/admin/api/dashboard');
+  } catch(e) {
+    console.error('Dashboard API xatosi:', e);
+    return;
+  }
+  if(d.error) {
+    console.error('Dashboard xatosi:', d.error);
+    alert('Dashboard xatosi: ' + d.error);
+    return;
+  }
+  document.getElementById('s-users').textContent = d.users ?? '—';
+  document.getElementById('s-shops').textContent = d.shops ?? '—';
+  document.getElementById('s-shops-open').textContent = (d.shops_open ?? '—')+' ta ochiq';
+  document.getElementById('s-couriers').textContent = d.couriers ?? '—';
+  document.getElementById('s-orders').textContent = d.total_orders ?? '—';
   document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
   document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
-  document.getElementById('s-pending').textContent = d.pending;
-  document.getElementById('s-onway').textContent = d.on_way;
-  document.getElementById('pending-badge').textContent = d.pending;
+  document.getElementById('s-pending').textContent = d.pending ?? '—';
+  document.getElementById('s-onway').textContent = d.on_way ?? '—';
+  document.getElementById('pending-badge').textContent = d.pending ?? 0;
 
   const ro = document.getElementById('recent-orders');
   ro.innerHTML = (d.recent_orders||[]).map(o=>`<tr>
@@ -1640,15 +1651,17 @@ def api_dashboard():
         c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='on_way'")
         on_way = c.fetchone()['cnt']
 
-        c.execute("""SELECT o.*, s.name as shop_name FROM orders o
+        c.execute("""SELECT o.id, o.order_uid, o.total_sum, o.status, o.created_at,
+                            s.name as shop_name
+                     FROM orders o
                      LEFT JOIN shops s ON o.shop_id=s.id
-                     ORDER BY o.created_at DESC LIMIT 10""")
+                     ORDER BY o.id DESC LIMIT 10""")
         recent_orders = [dict(r) for r in c.fetchall()]
 
-        c.execute("""SELECT s.*, 
+        c.execute("""SELECT s.id, s.name, s.is_open, COALESCE(s.rating,0) as rating,
                      COUNT(CASE WHEN o.created_at LIKE %s THEN 1 END) as today_count
                      FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
-                     GROUP BY s.id ORDER BY s.name""", (f"{today}%",))
+                     GROUP BY s.id, s.name, s.is_open, s.rating ORDER BY s.name""", (f"{today}%",))
         shops_info = [dict(r) for r in c.fetchall()]
         conn.close()
 
@@ -1660,12 +1673,15 @@ def api_dashboard():
             'recent_orders': recent_orders, 'shops_info': shops_info
         })
     except Exception as e:
+        import traceback
+        print("DASHBOARD ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/monitoring')
 @login_required
 def api_monitoring():
     try:
+        import traceback
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='pending'")
@@ -1711,6 +1727,8 @@ def api_monitoring():
             'free_couriers_list': free_couriers_list
         })
     except Exception as e:
+        import traceback
+        print("MONITORING ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/orders')
@@ -1832,7 +1850,9 @@ def api_shops():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT s.*, COUNT(o.id) as order_count,
+        sql = """SELECT s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time,
+                        s.is_open, s.rating, s.rating_count, s.admin_percent, s.created_at, s.vacation_until,
+                        COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_income
                  FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
                  WHERE 1=1"""
@@ -1840,7 +1860,7 @@ def api_shops():
         if search:
             sql += " AND (s.name ILIKE %s OR CAST(s.id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*2
-        sql += " GROUP BY s.id ORDER BY total_income DESC"
+        sql += " GROUP BY s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time, s.is_open, s.rating, s.rating_count, s.admin_percent, s.created_at, s.vacation_until ORDER BY total_income DESC"
         c.execute(sql, params)
         shops = [dict(r) for r in c.fetchall()]
         conn.close()

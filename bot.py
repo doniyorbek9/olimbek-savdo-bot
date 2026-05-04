@@ -4273,3 +4273,13 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+    
+# === ADMIN WEB PANEL ===
+from admin_panel import app as web_app
+from threading import Thread
+
+def run_web():
+    port = int(os.environ.get('PORT', 8080))
+    web_app.run(host='0.0.0.0', port=port)
+
+Thread(target=run_web, daemon=True).start()

@@ -1270,17 +1270,20 @@ async function loadOrders(){
 // ===== USERS =====
 async function loadUsers(){
   const search = document.getElementById('user-search').value;
-  const d = await api(`/admin/api/users?search=${encodeURIComponent(search)}`);
-  document.getElementById('users-count').textContent = d.total+' ta';
+  let d;
+  try { d = await api(`/admin/api/users?search=${encodeURIComponent(search)}`); } catch(e){ console.error('Users xatosi:',e); return; }
+  if(d.error){ console.error('Users API xatosi:',d.error); document.getElementById('users-table').innerHTML=`<tr><td colspan="9" style="color:red;padding:16px;">❌ Xato: ${d.error}</td></tr>`; return; }
+  document.getElementById('users-count').textContent = (d.total||0)+' ta';
   const t = document.getElementById('users-table');
-  t.innerHTML = (d.users||[]).map(u=>`<tr>
+  if(!d.users||d.users.length===0){ t.innerHTML='<tr><td colspan="9" class="empty-state">👥 Mijoz topilmadi</td></tr>'; return; }
+  t.innerHTML = d.users.map(u=>`<tr>
     <td>${u.id}</td>
-    <td>${u.full_name}</td>
-    <td>${u.phone}</td>
+    <td>${u.full_name||'—'}</td>
+    <td>${u.phone||'—'}</td>
     <td>${u.username?'@'+u.username:'—'}</td>
-    <td>${u.order_count}</td>
+    <td>${u.order_count||0}</td>
     <td>${fmtNum(u.total_spent)} so'm</td>
-    <td style="font-size:11px;">${u.registered_at}</td>
+    <td style="font-size:11px;">${u.registered_at||'—'}</td>
     <td>${u.is_blocked?'<span class="badge badge-red">🚫 Bloklangan</span>':'<span class="badge badge-green">✅ Faol</span>'}</td>
     <td>
       ${u.is_blocked
@@ -1770,7 +1773,8 @@ def api_users():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT u.*, COUNT(o.id) as order_count,
+        sql = """SELECT u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked,
+                        COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
                  FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
                  WHERE 1=1"""
@@ -1778,12 +1782,14 @@ def api_users():
         if search:
             sql += " AND (u.full_name ILIKE %s OR u.phone ILIKE %s OR CAST(u.id AS TEXT) ILIKE %s OR CAST(u.tg_id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*4
-        sql += " GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked ORDER BY order_count DESC"
+        sql += " GROUP BY u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked ORDER BY order_count DESC"
         c.execute(sql, params)
         users = [dict(r) for r in c.fetchall()]
         conn.close()
         return jsonify({'users': users, 'total': len(users)})
     except Exception as e:
+        import traceback
+        print("USERS ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/user/block', methods=['POST'])

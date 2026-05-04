@@ -36,6 +36,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from PIL import Image, ImageDraw, ImageFont
+from admin_panel import app as web_app
 
 # ===================== CONFIG =====================
 BOT_TOKEN = os.environ.get("BOT_TOKEN")

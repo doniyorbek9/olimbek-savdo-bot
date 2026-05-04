@@ -688,32 +688,10 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     .main{margin-left:0;}
     .two-col{grid-template-columns:1fr;}
     .stats-grid{grid-template-columns:repeat(2,1fr);}
-    #menu-btn{display:block !important;}
-    .sidebar-overlay{display:block;}
   }
-  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99;}
 </style>
-<script>
-function showSection(name){
-  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>showSection(name));return;}
-  const secs=['dashboard','monitoring','orders','users','couriers','shops','finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
-  const titles={'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring','orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar','shops':"🏪 Do'konlar",'finance':'💰 Moliya','promo':'🎟️ Promo kodlar','search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli','blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot','admin-orders':'📱 Admin buyurtmalari'};
-  secs.forEach(s=>{const el=document.getElementById('sec-'+s);if(el)el.classList.remove('active');});
-  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
-  const sec=document.getElementById('sec-'+name);if(sec)sec.classList.add('active');
-  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[name]||name;
-  document.querySelectorAll('.nav-item').forEach(el=>{const oc=el.getAttribute('onclick')||'';if(oc.includes("'"+name+"'")||oc.includes('"'+name+'"'))el.classList.add('active');});
-  const sb=document.getElementById('sidebar');const ov=document.getElementById('sidebar-overlay');
-  if(sb)sb.classList.remove('open');if(ov)ov.style.display='none';
-  const lm={'dashboard':'loadDashboard','monitoring':'loadMonitoring','orders':'loadOrders','users':'loadUsers','couriers':'loadCouriers','shops':'loadShops','finance':'loadFinance','promo':'loadPromo','chats':'loadChats','problems':'loadProblems','blocked':'loadBlocked','top':'loadTop','weekly':'loadWeekly','admin-orders':'loadAdminOrders'};
-  if(lm[name]&&typeof window[lm[name]]==='function')window[lm[name]]();
-}
-function toggleSidebar(){const sb=document.getElementById('sidebar');const ov=document.getElementById('sidebar-overlay');sb.classList.toggle('open');if(ov)ov.style.display=sb.classList.contains('open')?'block':'none';}
-</script>
 </head>
 <body>
-
-<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
@@ -786,8 +764,8 @@ function toggleSidebar(){const sb=document.getElementById('sidebar');const ov=do
 <div class="main">
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:14px;">
-      <button onclick="toggleSidebar()"
-        style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;display:none;" id="menu-btn">☰</button>
+      <button onclick="document.getElementById('sidebar').classList.toggle('open')"
+        style="display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;" id="menu-btn">☰</button>
       <div class="topbar-title" id="page-title">Dashboard</div>
     </div>
     <div class="topbar-right">
@@ -1158,6 +1136,49 @@ function updateClock(){
 setInterval(updateClock, 1000);
 updateClock();
 
+// NAVIGATION
+const sections = ['dashboard','monitoring','orders','users','couriers','shops',
+  'finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
+const titles = {
+  'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring',
+  'orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar',
+  'shops':'🏪 Do\'konlar','finance':'💰 Moliya','promo':'🎟️ Promo kodlar',
+  'search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli',
+  'blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot',
+  'admin-orders':'📱 Admin buyurtmalari'
+};
+
+function showSection(name){
+  sections.forEach(s => {
+    document.getElementById('sec-'+s).classList.remove('active');
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  });
+  document.getElementById('sec-'+name).classList.add('active');
+  document.getElementById('page-title').textContent = titles[name]||name;
+  document.querySelectorAll('.nav-item').forEach(el => {
+    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes("'"+name+"'"))
+      el.classList.add('active');
+  });
+
+  const loaders = {
+    'dashboard': loadDashboard,
+    'monitoring': loadMonitoring,
+    'orders': loadOrders,
+    'users': loadUsers,
+    'couriers': loadCouriers,
+    'shops': loadShops,
+    'finance': loadFinance,
+    'promo': loadPromo,
+    'chats': loadChats,
+    'problems': loadProblems,
+    'blocked': loadBlocked,
+    'top': loadTop,
+    'weekly': loadWeekly,
+    'admin-orders': loadAdminOrders
+  };
+  if(loaders[name]) loaders[name]();
+}
+
 // STATUS BADGE
 function statusBadge(s){
   const m = {
@@ -1173,28 +1194,17 @@ function fmtNum(n){return Number(n||0).toLocaleString('uz-UZ');}
 
 // ===== DASHBOARD =====
 async function loadDashboard(){
-  let d;
-  try {
-    d = await api('/admin/api/dashboard');
-  } catch(e) {
-    console.error('Dashboard API xatosi:', e);
-    return;
-  }
-  if(d.error) {
-    console.error('Dashboard xatosi:', d.error);
-    alert('Dashboard xatosi: ' + d.error);
-    return;
-  }
-  document.getElementById('s-users').textContent = d.users ?? '—';
-  document.getElementById('s-shops').textContent = d.shops ?? '—';
-  document.getElementById('s-shops-open').textContent = (d.shops_open ?? '—')+' ta ochiq';
-  document.getElementById('s-couriers').textContent = d.couriers ?? '—';
-  document.getElementById('s-orders').textContent = d.total_orders ?? '—';
+  const d = await api('/admin/api/dashboard');
+  document.getElementById('s-users').textContent = d.users;
+  document.getElementById('s-shops').textContent = d.shops;
+  document.getElementById('s-shops-open').textContent = d.shops_open+' ta ochiq';
+  document.getElementById('s-couriers').textContent = d.couriers;
+  document.getElementById('s-orders').textContent = d.total_orders;
   document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
   document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
-  document.getElementById('s-pending').textContent = d.pending ?? '—';
-  document.getElementById('s-onway').textContent = d.on_way ?? '—';
-  document.getElementById('pending-badge').textContent = d.pending ?? 0;
+  document.getElementById('s-pending').textContent = d.pending;
+  document.getElementById('s-onway').textContent = d.on_way;
+  document.getElementById('pending-badge').textContent = d.pending;
 
   const ro = document.getElementById('recent-orders');
   ro.innerHTML = (d.recent_orders||[]).map(o=>`<tr>
@@ -1270,20 +1280,17 @@ async function loadOrders(){
 // ===== USERS =====
 async function loadUsers(){
   const search = document.getElementById('user-search').value;
-  let d;
-  try { d = await api(`/admin/api/users?search=${encodeURIComponent(search)}`); } catch(e){ console.error('Users xatosi:',e); return; }
-  if(d.error){ console.error('Users API xatosi:',d.error); document.getElementById('users-table').innerHTML=`<tr><td colspan="9" style="color:red;padding:16px;">❌ Xato: ${d.error}</td></tr>`; return; }
-  document.getElementById('users-count').textContent = (d.total||0)+' ta';
+  const d = await api(`/admin/api/users?search=${encodeURIComponent(search)}`);
+  document.getElementById('users-count').textContent = d.total+' ta';
   const t = document.getElementById('users-table');
-  if(!d.users||d.users.length===0){ t.innerHTML='<tr><td colspan="9" class="empty-state">👥 Mijoz topilmadi</td></tr>'; return; }
-  t.innerHTML = d.users.map(u=>`<tr>
+  t.innerHTML = (d.users||[]).map(u=>`<tr>
     <td>${u.id}</td>
-    <td>${u.full_name||'—'}</td>
-    <td>${u.phone||'—'}</td>
+    <td>${u.full_name}</td>
+    <td>${u.phone}</td>
     <td>${u.username?'@'+u.username:'—'}</td>
-    <td>${u.order_count||0}</td>
+    <td>${u.order_count}</td>
     <td>${fmtNum(u.total_spent)} so'm</td>
-    <td style="font-size:11px;">${u.registered_at||'—'}</td>
+    <td style="font-size:11px;">${u.registered_at}</td>
     <td>${u.is_blocked?'<span class="badge badge-red">🚫 Bloklangan</span>':'<span class="badge badge-green">✅ Faol</span>'}</td>
     <td>
       ${u.is_blocked
@@ -1575,21 +1582,8 @@ document.querySelectorAll('.modal-overlay').forEach(m=>{
   m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
 });
 
-// Register loaders on window so showSection (defined in <head>) can call them
-window.loadDashboard = loadDashboard;
-window.loadMonitoring = loadMonitoring;
-window.loadOrders = loadOrders;
-window.loadUsers = loadUsers;
-window.loadCouriers = loadCouriers;
-window.loadShops = loadShops;
-window.loadFinance = loadFinance;
-window.loadPromo = loadPromo;
-window.loadChats = loadChats;
-window.loadProblems = loadProblems;
-window.loadBlocked = loadBlocked;
-window.loadTop = loadTop;
-window.loadWeekly = loadWeekly;
-window.loadAdminOrders = loadAdminOrders;
+// Mobile menu
+if(window.innerWidth<=768) document.getElementById('menu-btn').style.display='block';
 
 // AUTO REFRESH monitoring every 30s
 setInterval(()=>{
@@ -1654,17 +1648,15 @@ def api_dashboard():
         c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='on_way'")
         on_way = c.fetchone()['cnt']
 
-        c.execute("""SELECT o.id, o.order_uid, o.total_sum, o.status, o.created_at,
-                            s.name as shop_name
-                     FROM orders o
+        c.execute("""SELECT o.*, s.name as shop_name FROM orders o
                      LEFT JOIN shops s ON o.shop_id=s.id
-                     ORDER BY o.id DESC LIMIT 10""")
+                     ORDER BY o.created_at DESC LIMIT 10""")
         recent_orders = [dict(r) for r in c.fetchall()]
 
-        c.execute("""SELECT s.id, s.name, s.is_open, COALESCE(s.rating,0) as rating,
+        c.execute("""SELECT s.*, 
                      COUNT(CASE WHEN o.created_at LIKE %s THEN 1 END) as today_count
                      FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
-                     GROUP BY s.id, s.name, s.is_open, s.rating ORDER BY s.name""", (f"{today}%",))
+                     GROUP BY s.id ORDER BY s.name""", (f"{today}%",))
         shops_info = [dict(r) for r in c.fetchall()]
         conn.close()
 
@@ -1676,15 +1668,12 @@ def api_dashboard():
             'recent_orders': recent_orders, 'shops_info': shops_info
         })
     except Exception as e:
-        import traceback
-        print("DASHBOARD ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/monitoring')
 @login_required
 def api_monitoring():
     try:
-        import traceback
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='pending'")
@@ -1730,8 +1719,6 @@ def api_monitoring():
             'free_couriers_list': free_couriers_list
         })
     except Exception as e:
-        import traceback
-        print("MONITORING ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/orders')
@@ -1773,8 +1760,7 @@ def api_users():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked,
-                        COUNT(o.id) as order_count,
+        sql = """SELECT u.*, COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
                  FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
                  WHERE 1=1"""
@@ -1782,14 +1768,12 @@ def api_users():
         if search:
             sql += " AND (u.full_name ILIKE %s OR u.phone ILIKE %s OR CAST(u.id AS TEXT) ILIKE %s OR CAST(u.tg_id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*4
-        sql += " GROUP BY u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked ORDER BY order_count DESC"
+        sql += " GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked ORDER BY order_count DESC"
         c.execute(sql, params)
         users = [dict(r) for r in c.fetchall()]
         conn.close()
         return jsonify({'users': users, 'total': len(users)})
     except Exception as e:
-        import traceback
-        print("USERS ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/user/block', methods=['POST'])
@@ -1856,9 +1840,7 @@ def api_shops():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time,
-                        s.is_open, s.rating, s.rating_count, s.admin_percent, s.created_at, s.vacation_until,
-                        COUNT(o.id) as order_count,
+        sql = """SELECT s.*, COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_income
                  FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
                  WHERE 1=1"""
@@ -1866,7 +1848,7 @@ def api_shops():
         if search:
             sql += " AND (s.name ILIKE %s OR CAST(s.id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*2
-        sql += " GROUP BY s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time, s.is_open, s.rating, s.rating_count, s.admin_percent, s.created_at, s.vacation_until ORDER BY total_income DESC"
+        sql += " GROUP BY s.id ORDER BY total_income DESC"
         c.execute(sql, params)
         shops = [dict(r) for r in c.fetchall()]
         conn.close()

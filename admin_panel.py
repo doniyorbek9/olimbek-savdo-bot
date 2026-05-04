@@ -19,7 +19,7 @@ from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
-from admin_panel import app as web_app
+
 
 # ===================== CONFIG =====================
 DATABASE_URL = os.environ.get("DATABASE_URL")

@@ -874,15 +874,15 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // NAVIGATION
-const sections = ['dashboard','monitoring','orders','users','couriers','shops',
-  'finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
+const sections = ["dashboard","monitoring","orders","users","couriers","shops",
+  "finance","promo","search","chats","problems","blocked","top","weekly","admin-orders"];
 const titles = {
-  'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring',
-  'orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar',
-  'shops':'🏪 Do\'konlar','finance':'💰 Moliya','promo':'🎟️ Promo kodlar',
-  'search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli',
-  'blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot',
-  'admin-orders':'📱 Admin buyurtmalari'
+  "dashboard":"📊 Dashboard","monitoring":"👁️ Jonli monitoring",
+  "orders":"📦 Buyurtmalar","users":"👥 Mijozlar","couriers":"🚚 Kuryerlar",
+  "shops":"🏪 Do’konlar","finance":"💰 Moliya","promo":"🎟️ Promo kodlar",
+  "search":"🔍 Qidirish","chats":"💬 Chatlar","problems":"⚠️ Muammoli",
+  "blocked":"🚫 Bloklangan","top":"🏆 Top mijozlar","weekly":"📈 Haftalik hisobot",
+  "admin-orders":"📱 Admin buyurtmalari"
 };
 
 function showSection(name){
@@ -893,7 +893,7 @@ function showSection(name){
   document.getElementById('sec-'+name).classList.add('active');
   document.getElementById('page-title').textContent = titles[name]||name;
   document.querySelectorAll('.nav-item').forEach(el => {
-    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes("'"+name+"'"))
+    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes(name))
       el.classList.add('active');
   });
 
@@ -919,11 +919,11 @@ function showSection(name){
 // STATUS BADGE
 function statusBadge(s){
   const m = {
-    'pending':'<span class="badge badge-yellow">⏳ Kutilmoqda</span>',
-    'confirmed':'<span class="badge badge-blue">✅ Tasdiqlandi</span>',
-    'on_way':'<span class="badge badge-blue">🚗 Yo\'lda</span>',
-    'delivered':'<span class="badge badge-green">✅ Yetkazildi</span>',
-    'rejected':'<span class="badge badge-red">❌ Rad etildi</span>'
+    "pending":'<span class="badge badge-yellow">⏳ Kutilmoqda</span>',
+    "confirmed":'<span class="badge badge-blue">✅ Tasdiqlandi</span>',
+    "on_way":'<span class="badge badge-blue">🚗 Yo\u2019lda</span>',
+    "delivered":'<span class="badge badge-green">✅ Yetkazildi</span>',
+    "rejected":'<span class="badge badge-red">❌ Rad etildi</span>'
   };
   return m[s]||`<span class="badge badge-gray">${s}</span>`;
 }
@@ -937,8 +937,8 @@ async function loadDashboard(){
   document.getElementById('s-shops-open').textContent = d.shops_open+' ta ochiq';
   document.getElementById('s-couriers').textContent = d.couriers;
   document.getElementById('s-orders').textContent = d.total_orders;
-  document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
-  document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
+  document.getElementById('s-income').textContent = fmtNum(d.total_income)+` so'm`;
+  document.getElementById('s-today').textContent = fmtNum(d.today_income)+` so'm`;
   document.getElementById('s-pending').textContent = d.pending;
   document.getElementById('s-onway').textContent = d.on_way;
   document.getElementById('pending-badge').textContent = d.pending;
@@ -983,14 +983,14 @@ async function loadMonitoring(){
       <td>${o.wait_min} daq${warn}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="5" class="empty-state">✅ Muammo yo\'q</td></tr>';
+  }).join('') || `<tr><td colspan="5" class="empty-state">✅ Muammo yo\u2019q</td></tr>`;
 
   const fcl = document.getElementById('free-couriers-list');
   fcl.innerHTML = (d.free_couriers_list||[]).map(c=>`<tr>
     <td>${c.full_name}</td>
     <td>${c.phone}</td>
     <td>${c.shop_name||'—'}</td>
-  </tr>`).join('') || '<tr><td colspan="3" class="empty-state">Bo\'sh kuryer yo\'q</td></tr>';
+  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">Bo\u2019sh kuryer yo\u2019q</td></tr>`;
 }
 
 // ===== ORDERS =====
@@ -1011,7 +1011,7 @@ async function loadOrders(){
     <td>${statusBadge(o.status)}</td>
     <td>${o.courier_name||'—'}</td>
     <td style="font-size:11px;white-space:nowrap;">${o.created_at}</td>
-  </tr>`).join('') || '<tr><td colspan="10" class="empty-state">Buyurtma yo\'q</td></tr>';
+  </tr>`).join('') || `<tr><td colspan="10" class="empty-state">Buyurtma yo\u2019q</td></tr>`;
 }
 
 // ===== USERS =====
@@ -1057,7 +1057,7 @@ async function loadCouriers(){
     <td>${c.tg_id}</td>
     <td>${c.shop_name||'—'}</td>
     <td>${c.delivered_count}</td>
-    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':'<span class="badge badge-green">🟢 Bo\'sh</span>'}</td>
+    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':`<span class="badge badge-green">🟢 Bo\u2019sh</span>`}</td>
     <td>${c.is_blocked?'<span class="badge badge-red">🚫</span>':'<span class="badge badge-green">✅</span>'}</td>
     <td>
       ${c.is_blocked
@@ -1101,10 +1101,10 @@ async function loadShops(){
 // ===== FINANCE =====
 async function loadFinance(){
   const d = await api('/admin/api/finance');
-  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+' so\'m';
-  document.getElementById('f-card').textContent = fmtNum(d.card_total)+' so\'m';
-  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+' so\'m';
-  document.getElementById('f-total').textContent = fmtNum(d.total)+' so\'m';
+  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+` so'm`;
+  document.getElementById('f-card').textContent = fmtNum(d.card_total)+` so'm`;
+  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+` so'm`;
+  document.getElementById('f-total').textContent = fmtNum(d.total)+` so'm`;
   const t = document.getElementById('finance-table');
   t.innerHTML = (d.shops||[]).map(s=>`<tr>
     <td>${s.name}</td>
@@ -1121,7 +1121,7 @@ async function loadPromo(){
   const t = document.getElementById('promo-table');
   t.innerHTML = (d.promos||[]).map(p=>{
     const active = (p.max_uses===0||p.used_count<p.max_uses)&&(!p.expires_at||new Date(p.expires_at)>=new Date());
-    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+' so\'m';
+    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+` so'm`;
     return `<tr>
       <td><code>${p.code}</code></td>
       <td>${valText}</td>
@@ -1207,7 +1207,7 @@ async function loadChats(){
       <div style="font-size:11px;color:var(--text2);margin-top:2px;">${c.last_msg||''}</div>
       <div style="font-size:10px;color:var(--text2);margin-top:2px;">${c.last_time||''}</div>
     </div>
-  `).join('') || '<div class="empty-state"><p>Chat yo\'q</p></div>';
+  `).join('') || `<div class="empty-state"><p>Chat yo\u2019q</p></div>`;
 }
 
 async function loadChatDetail(from_id, to_id){
@@ -1218,7 +1218,7 @@ async function loadChatDetail(from_id, to_id){
       <div class="chat-meta">${m.from_tg_id} • ${m.created_at}</div>
       <div>${m.message}</div>
     </div>
-  `).join('') || '<div class="empty-state"><p>Xabar yo\'q</p></div>';
+  `).join('') || `<div class="empty-state"><p>Xabar yo\u2019q</p></div>`;
   detail.scrollTop = detail.scrollHeight;
 }
 
@@ -1237,7 +1237,7 @@ async function loadProblems(){
       <td style="font-size:11px;">${o.created_at}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" class="empty-state">✅ Muammo yo\'q</td></tr>';
+  }).join('') || `<tr><td colspan="7" class="empty-state">✅ Muammo yo\u2019q</td></tr>`;
 }
 
 // ===== BLOCKED =====
@@ -1247,13 +1247,13 @@ async function loadBlocked(){
   bu.innerHTML = (d.users||[]).map(u=>`<tr>
     <td>${u.full_name}</td><td>${u.phone}</td><td>${u.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleUser(${u.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
+  </tr>`).join('') || `<tr><td colspan="4" class="empty-state">Yo\u2019q</td></tr>`;
 
   const bc = document.getElementById('blocked-couriers-table');
   bc.innerHTML = (d.couriers||[]).map(c=>`<tr>
     <td>${c.full_name}</td><td>${c.phone}</td><td>${c.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleCourier(${c.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
+  </tr>`).join('') || `<tr><td colspan="4" class="empty-state">Yo\u2019q</td></tr>`;
 }
 
 // ===== TOP =====
@@ -1263,7 +1263,7 @@ async function loadTop(){
   const medals = ['🥇','🥈','🥉'];
   t.innerHTML = (d.users||[]).map((u,i)=>`<tr>
     <td>${medals[i]||i+1}</td>
-    <td>${u.full_name||'Noma\'lum'}</td>
+    <td>${u.full_name||`Noma\u2019lum`}</td>
     <td>${u.phone||'—'}</td>
     <td>${u.order_count}</td>
     <td>${fmtNum(u.total_spent)} so'm</td>

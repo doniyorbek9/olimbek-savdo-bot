@@ -293,30 +293,293 @@ BASE_HTML = '''<!DOCTYPE html>
 </html>'''
 
 # ===================== LOGIN =====================
-LOGIN_HTML = BASE_HTML.replace('{% block body %}{% endblock %}', '''
-<div class="login-page">
-  <div class="login-box">
-    <div class="login-logo">🛒 Olimbek SAVDO</div>
-    <div class="login-sub">Admin boshqaruv paneli</div>
-    {% if error %}
-    <div class="error-msg">❌ {{ error }}</div>
-    {% endif %}
-    <form method="POST">
-      <div class="form-group">
-        <label class="form-label">Username</label>
-        <input type="text" name="username" class="form-control" placeholder="admin" required autofocus>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Parol</label>
-        <input type="password" name="password" class="form-control" placeholder="••••••••" required>
-      </div>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
-        🔐 Kirish
-      </button>
-    </form>
+LOGIN_HTML = '''<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kirish — Olimbek SAVDO Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{
+  min-height:100vh;
+  background:#080c18;
+  font-family:'DM Sans',sans-serif;
+  display:flex;
+  overflow:hidden;
+}
+
+/* Animated background */
+.bg-animated{
+  position:fixed;inset:0;z-index:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(0,212,170,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 60%, rgba(14,165,233,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 40% at 60% 20%, rgba(139,92,246,0.08) 0%, transparent 50%);
+  animation: bgmove 8s ease-in-out infinite alternate;
+}
+@keyframes bgmove{
+  0%{background-position:0% 0%;}
+  100%{background-position:100% 100%;}
+}
+
+/* Grid overlay */
+.grid-overlay{
+  position:fixed;inset:0;z-index:0;
+  background-image:
+    linear-gradient(rgba(0,212,170,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,170,0.04) 1px, transparent 1px);
+  background-size:60px 60px;
+}
+
+/* Left branding panel */
+.left-panel{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  padding:80px;
+  position:relative;
+  z-index:1;
+}
+.brand-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  background:rgba(0,212,170,0.1);border:1px solid rgba(0,212,170,0.25);
+  padding:6px 14px;border-radius:20px;
+  font-size:12px;color:#00d4aa;font-weight:600;letter-spacing:1px;
+  margin-bottom:32px;width:fit-content;
+}
+.brand-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;animation:pulse2 2s infinite;}
+@keyframes pulse2{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);}}
+
+.brand-title{
+  font-family:'Syne',sans-serif;
+  font-size:64px;font-weight:800;
+  line-height:1.05;
+  margin-bottom:20px;
+}
+.brand-title span.green{color:#00d4aa;}
+.brand-title span.white{color:#e2e8f0;}
+
+.brand-desc{
+  font-size:17px;color:#64748b;font-weight:300;
+  line-height:1.7;max-width:420px;margin-bottom:48px;
+}
+
+.stats-row{display:flex;gap:24px;flex-wrap:wrap;}
+.stat-pill{
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;padding:14px 20px;
+}
+.stat-pill .num{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#e2e8f0;}
+.stat-pill .lbl{font-size:11px;color:#475569;margin-top:2px;}
+
+/* Right login panel */
+.right-panel{
+  width:480px;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(17,24,39,0.85);
+  backdrop-filter:blur(20px);
+  border-left:1px solid rgba(255,255,255,0.06);
+  position:relative;z-index:1;
+  padding:40px;
+}
+
+.login-box{width:100%;max-width:380px;}
+
+.login-header{margin-bottom:40px;}
+.login-icon{
+  width:56px;height:56px;
+  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+  border-radius:16px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;margin-bottom:24px;
+  box-shadow:0 8px 32px rgba(0,212,170,0.3);
+}
+.login-title{
+  font-family:'Syne',sans-serif;
+  font-size:28px;font-weight:800;color:#f1f5f9;
+  margin-bottom:8px;
+}
+.login-sub{font-size:14px;color:#64748b;}
+
+.error-box{
+  background:rgba(239,68,68,0.1);
+  border:1px solid rgba(239,68,68,0.25);
+  border-radius:10px;padding:12px 16px;
+  margin-bottom:20px;
+  display:flex;align-items:center;gap:10px;
+  font-size:13px;color:#f87171;
+}
+
+.field{margin-bottom:20px;}
+.field label{
+  display:block;font-size:12px;font-weight:600;
+  color:#64748b;letter-spacing:0.5px;text-transform:uppercase;
+  margin-bottom:8px;
+}
+.field-wrap{position:relative;}
+.field-icon{
+  position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-size:16px;pointer-events:none;
+}
+.field input{
+  width:100%;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:12px;
+  padding:14px 14px 14px 44px;
+  color:#e2e8f0;font-size:14px;
+  outline:none;
+  font-family:'DM Sans',sans-serif;
+  transition:all 0.2s;
+}
+.field input:focus{
+  border-color:#00d4aa;
+  background:rgba(0,212,170,0.05);
+  box-shadow:0 0 0 3px rgba(0,212,170,0.1);
+}
+.field input::placeholder{color:#334155;}
+
+.submit-btn{
+  width:100%;padding:15px;
+  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+  border:none;border-radius:12px;
+  font-size:15px;font-weight:700;
+  color:#000;cursor:pointer;
+  font-family:'Syne',sans-serif;letter-spacing:0.5px;
+  transition:all 0.2s;
+  margin-top:8px;
+  position:relative;overflow:hidden;
+}
+.submit-btn:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(0,212,170,0.4);
+}
+.submit-btn:active{transform:translateY(0);}
+
+.login-footer{
+  margin-top:32px;padding-top:24px;
+  border-top:1px solid rgba(255,255,255,0.06);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:12px;color:#334155;
+}
+.login-footer span{color:#00d4aa;}
+
+/* Floating cards decoration */
+.float-card{
+  position:absolute;
+  background:rgba(17,24,39,0.8);
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:14px;padding:16px 20px;
+  backdrop-filter:blur(10px);
+}
+.float-card-1{bottom:120px;left:80px;animation:float1 6s ease-in-out infinite;}
+.float-card-2{top:140px;right:520px;animation:float2 7s ease-in-out infinite;}
+@keyframes float1{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+@keyframes float2{0%,100%{transform:translateY(-8px);}50%{transform:translateY(4px);}}
+
+.fc-label{font-size:10px;color:#475569;margin-bottom:6px;font-weight:500;}
+.fc-value{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#00d4aa;}
+.fc-sub{font-size:10px;color:#22c55e;margin-top:2px;}
+
+@media(max-width:900px){
+  .left-panel{display:none;}
+  .right-panel{width:100%;border-left:none;}
+}
+</style>
+</head>
+<body>
+<div class="bg-animated"></div>
+<div class="grid-overlay"></div>
+
+<!-- LEFT BRANDING -->
+<div class="left-panel">
+  <div class="brand-badge">
+    <span class="brand-dot"></span>
+    JONLI TIZIM
+  </div>
+
+  <div class="brand-title">
+    <span class="green">Olimbek</span><br>
+    <span class="white">SAVDO</span>
+  </div>
+
+  <p class="brand-desc">
+    Zamonaviy savdo boshqaruv tizimi. Do'konlar, kuryerlar va buyurtmalarni real vaqtda nazorat qiling.
+  </p>
+
+  <div class="stats-row">
+    <div class="stat-pill">
+      <div class="num">24/7</div>
+      <div class="lbl">Ishlash vaqti</div>
+    </div>
+    <div class="stat-pill">
+      <div class="num">100%</div>
+      <div class="lbl">Ishonchlilik</div>
+    </div>
+    <div class="stat-pill">
+      <div class="num">⚡</div>
+      <div class="lbl">Real vaqt</div>
+    </div>
+  </div>
+
+  <!-- Floating decoration cards -->
+  <div class="float-card float-card-1">
+    <div class="fc-label">Bugungi buyurtmalar</div>
+    <div class="fc-value" id="fc-orders">— ta</div>
+    <div class="fc-sub">↑ Faol</div>
+  </div>
+  <div class="float-card float-card-2">
+    <div class="fc-label">Jonli daromad</div>
+    <div class="fc-value" id="fc-income">— so'm</div>
+    <div class="fc-sub">↑ O'sish</div>
   </div>
 </div>
-''')
+
+<!-- RIGHT LOGIN -->
+<div class="right-panel">
+  <div class="login-box">
+    <div class="login-header">
+      <div class="login-icon">🛒</div>
+      <div class="login-title">Xush kelibsiz!</div>
+      <div class="login-sub">Admin paneliga kirish uchun ma'lumotlaringizni kiriting</div>
+    </div>
+
+    {% if error %}
+    <div class="error-box">
+      ❌ {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST">
+      <div class="field">
+        <label>Username</label>
+        <div class="field-wrap">
+          <span class="field-icon">👤</span>
+          <input type="text" name="username" placeholder="admin" required autofocus autocomplete="username">
+        </div>
+      </div>
+      <div class="field">
+        <label>Parol</label>
+        <div class="field-wrap">
+          <span class="field-icon">🔒</span>
+          <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+        </div>
+      </div>
+      <button type="submit" class="submit-btn">🔐 Kirish</button>
+    </form>
+
+    <div class="login-footer">
+      <span>🛡️</span> Olimbek SAVDO &nbsp;·&nbsp; <span>Admin Panel v2.0</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>'''
 
 # ===================== MAIN DASHBOARD =====================
 DASHBOARD_HTML = '''<!DOCTYPE html>
@@ -874,15 +1137,15 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // NAVIGATION
-const sections = ["dashboard","monitoring","orders","users","couriers","shops",
-  "finance","promo","search","chats","problems","blocked","top","weekly","admin-orders"];
+const sections = ['dashboard','monitoring','orders','users','couriers','shops',
+  'finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
 const titles = {
-  "dashboard":"📊 Dashboard","monitoring":"👁️ Jonli monitoring",
-  "orders":"📦 Buyurtmalar","users":"👥 Mijozlar","couriers":"🚚 Kuryerlar",
-  "shops":"🏪 Do’konlar","finance":"💰 Moliya","promo":"🎟️ Promo kodlar",
-  "search":"🔍 Qidirish","chats":"💬 Chatlar","problems":"⚠️ Muammoli",
-  "blocked":"🚫 Bloklangan","top":"🏆 Top mijozlar","weekly":"📈 Haftalik hisobot",
-  "admin-orders":"📱 Admin buyurtmalari"
+  'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring',
+  'orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar',
+  'shops':'🏪 Do\'konlar','finance':'💰 Moliya','promo':'🎟️ Promo kodlar',
+  'search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli',
+  'blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot',
+  'admin-orders':'📱 Admin buyurtmalari'
 };
 
 function showSection(name){
@@ -893,7 +1156,7 @@ function showSection(name){
   document.getElementById('sec-'+name).classList.add('active');
   document.getElementById('page-title').textContent = titles[name]||name;
   document.querySelectorAll('.nav-item').forEach(el => {
-    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes(name))
+    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes("'"+name+"'"))
       el.classList.add('active');
   });
 
@@ -919,11 +1182,11 @@ function showSection(name){
 // STATUS BADGE
 function statusBadge(s){
   const m = {
-    "pending":'<span class="badge badge-yellow">⏳ Kutilmoqda</span>',
-    "confirmed":'<span class="badge badge-blue">✅ Tasdiqlandi</span>',
-    "on_way":'<span class="badge badge-blue">🚗 Yo\u2019lda</span>',
-    "delivered":'<span class="badge badge-green">✅ Yetkazildi</span>',
-    "rejected":'<span class="badge badge-red">❌ Rad etildi</span>'
+    'pending':'<span class="badge badge-yellow">⏳ Kutilmoqda</span>',
+    'confirmed':'<span class="badge badge-blue">✅ Tasdiqlandi</span>',
+    'on_way':'<span class="badge badge-blue">🚗 Yo\'lda</span>',
+    'delivered':'<span class="badge badge-green">✅ Yetkazildi</span>',
+    'rejected':'<span class="badge badge-red">❌ Rad etildi</span>'
   };
   return m[s]||`<span class="badge badge-gray">${s}</span>`;
 }
@@ -937,8 +1200,8 @@ async function loadDashboard(){
   document.getElementById('s-shops-open').textContent = d.shops_open+' ta ochiq';
   document.getElementById('s-couriers').textContent = d.couriers;
   document.getElementById('s-orders').textContent = d.total_orders;
-  document.getElementById('s-income').textContent = fmtNum(d.total_income)+` so'm`;
-  document.getElementById('s-today').textContent = fmtNum(d.today_income)+` so'm`;
+  document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
+  document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
   document.getElementById('s-pending').textContent = d.pending;
   document.getElementById('s-onway').textContent = d.on_way;
   document.getElementById('pending-badge').textContent = d.pending;
@@ -983,14 +1246,14 @@ async function loadMonitoring(){
       <td>${o.wait_min} daq${warn}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" class="empty-state">✅ Muammo yo\u2019q</td></tr>`;
+  }).join('') || '<tr><td colspan="5" class="empty-state">✅ Muammo yo\'q</td></tr>';
 
   const fcl = document.getElementById('free-couriers-list');
   fcl.innerHTML = (d.free_couriers_list||[]).map(c=>`<tr>
     <td>${c.full_name}</td>
     <td>${c.phone}</td>
     <td>${c.shop_name||'—'}</td>
-  </tr>`).join('') || `<tr><td colspan="3" class="empty-state">Bo\u2019sh kuryer yo\u2019q</td></tr>`;
+  </tr>`).join('') || '<tr><td colspan="3" class="empty-state">Bo\'sh kuryer yo\'q</td></tr>';
 }
 
 // ===== ORDERS =====
@@ -1011,7 +1274,7 @@ async function loadOrders(){
     <td>${statusBadge(o.status)}</td>
     <td>${o.courier_name||'—'}</td>
     <td style="font-size:11px;white-space:nowrap;">${o.created_at}</td>
-  </tr>`).join('') || `<tr><td colspan="10" class="empty-state">Buyurtma yo\u2019q</td></tr>`;
+  </tr>`).join('') || '<tr><td colspan="10" class="empty-state">Buyurtma yo\'q</td></tr>';
 }
 
 // ===== USERS =====
@@ -1057,7 +1320,7 @@ async function loadCouriers(){
     <td>${c.tg_id}</td>
     <td>${c.shop_name||'—'}</td>
     <td>${c.delivered_count}</td>
-    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':`<span class="badge badge-green">🟢 Bo\u2019sh</span>`}</td>
+    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':'<span class="badge badge-green">🟢 Bo\'sh</span>'}</td>
     <td>${c.is_blocked?'<span class="badge badge-red">🚫</span>':'<span class="badge badge-green">✅</span>'}</td>
     <td>
       ${c.is_blocked
@@ -1101,10 +1364,10 @@ async function loadShops(){
 // ===== FINANCE =====
 async function loadFinance(){
   const d = await api('/admin/api/finance');
-  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+` so'm`;
-  document.getElementById('f-card').textContent = fmtNum(d.card_total)+` so'm`;
-  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+` so'm`;
-  document.getElementById('f-total').textContent = fmtNum(d.total)+` so'm`;
+  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+' so\'m';
+  document.getElementById('f-card').textContent = fmtNum(d.card_total)+' so\'m';
+  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+' so\'m';
+  document.getElementById('f-total').textContent = fmtNum(d.total)+' so\'m';
   const t = document.getElementById('finance-table');
   t.innerHTML = (d.shops||[]).map(s=>`<tr>
     <td>${s.name}</td>
@@ -1121,7 +1384,7 @@ async function loadPromo(){
   const t = document.getElementById('promo-table');
   t.innerHTML = (d.promos||[]).map(p=>{
     const active = (p.max_uses===0||p.used_count<p.max_uses)&&(!p.expires_at||new Date(p.expires_at)>=new Date());
-    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+` so'm`;
+    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+' so\'m';
     return `<tr>
       <td><code>${p.code}</code></td>
       <td>${valText}</td>
@@ -1207,7 +1470,7 @@ async function loadChats(){
       <div style="font-size:11px;color:var(--text2);margin-top:2px;">${c.last_msg||''}</div>
       <div style="font-size:10px;color:var(--text2);margin-top:2px;">${c.last_time||''}</div>
     </div>
-  `).join('') || `<div class="empty-state"><p>Chat yo\u2019q</p></div>`;
+  `).join('') || '<div class="empty-state"><p>Chat yo\'q</p></div>';
 }
 
 async function loadChatDetail(from_id, to_id){
@@ -1218,7 +1481,7 @@ async function loadChatDetail(from_id, to_id){
       <div class="chat-meta">${m.from_tg_id} • ${m.created_at}</div>
       <div>${m.message}</div>
     </div>
-  `).join('') || `<div class="empty-state"><p>Xabar yo\u2019q</p></div>`;
+  `).join('') || '<div class="empty-state"><p>Xabar yo\'q</p></div>';
   detail.scrollTop = detail.scrollHeight;
 }
 
@@ -1237,7 +1500,7 @@ async function loadProblems(){
       <td style="font-size:11px;">${o.created_at}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" class="empty-state">✅ Muammo yo\u2019q</td></tr>`;
+  }).join('') || '<tr><td colspan="7" class="empty-state">✅ Muammo yo\'q</td></tr>';
 }
 
 // ===== BLOCKED =====
@@ -1247,13 +1510,13 @@ async function loadBlocked(){
   bu.innerHTML = (d.users||[]).map(u=>`<tr>
     <td>${u.full_name}</td><td>${u.phone}</td><td>${u.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleUser(${u.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || `<tr><td colspan="4" class="empty-state">Yo\u2019q</td></tr>`;
+  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
 
   const bc = document.getElementById('blocked-couriers-table');
   bc.innerHTML = (d.couriers||[]).map(c=>`<tr>
     <td>${c.full_name}</td><td>${c.phone}</td><td>${c.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleCourier(${c.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || `<tr><td colspan="4" class="empty-state">Yo\u2019q</td></tr>`;
+  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
 }
 
 // ===== TOP =====
@@ -1263,7 +1526,7 @@ async function loadTop(){
   const medals = ['🥇','🥈','🥉'];
   t.innerHTML = (d.users||[]).map((u,i)=>`<tr>
     <td>${medals[i]||i+1}</td>
-    <td>${u.full_name||`Noma\u2019lum`}</td>
+    <td>${u.full_name||'Noma\'lum'}</td>
     <td>${u.phone||'—'}</td>
     <td>${u.order_count}</td>
     <td>${fmtNum(u.total_spent)} so'm</td>

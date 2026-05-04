@@ -688,10 +688,32 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     .main{margin-left:0;}
     .two-col{grid-template-columns:1fr;}
     .stats-grid{grid-template-columns:repeat(2,1fr);}
+    #menu-btn{display:block !important;}
+    .sidebar-overlay{display:block;}
   }
+  .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:99;}
 </style>
+<script>
+function showSection(name){
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',()=>showSection(name));return;}
+  const secs=['dashboard','monitoring','orders','users','couriers','shops','finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
+  const titles={'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring','orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar','shops':"🏪 Do'konlar",'finance':'💰 Moliya','promo':'🎟️ Promo kodlar','search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli','blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot','admin-orders':'📱 Admin buyurtmalari'};
+  secs.forEach(s=>{const el=document.getElementById('sec-'+s);if(el)el.classList.remove('active');});
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.remove('active'));
+  const sec=document.getElementById('sec-'+name);if(sec)sec.classList.add('active');
+  const pt=document.getElementById('page-title');if(pt)pt.textContent=titles[name]||name;
+  document.querySelectorAll('.nav-item').forEach(el=>{const oc=el.getAttribute('onclick')||'';if(oc.includes("'"+name+"'")||oc.includes('"'+name+'"'))el.classList.add('active');});
+  const sb=document.getElementById('sidebar');const ov=document.getElementById('sidebar-overlay');
+  if(sb)sb.classList.remove('open');if(ov)ov.style.display='none';
+  const lm={'dashboard':'loadDashboard','monitoring':'loadMonitoring','orders':'loadOrders','users':'loadUsers','couriers':'loadCouriers','shops':'loadShops','finance':'loadFinance','promo':'loadPromo','chats':'loadChats','problems':'loadProblems','blocked':'loadBlocked','top':'loadTop','weekly':'loadWeekly','admin-orders':'loadAdminOrders'};
+  if(lm[name]&&typeof window[lm[name]]==='function')window[lm[name]]();
+}
+function toggleSidebar(){const sb=document.getElementById('sidebar');const ov=document.getElementById('sidebar-overlay');sb.classList.toggle('open');if(ov)ov.style.display=sb.classList.contains('open')?'block':'none';}
+</script>
 </head>
 <body>
+
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar()"></div>
 
 <!-- SIDEBAR -->
 <div class="sidebar" id="sidebar">
@@ -764,8 +786,8 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <div class="main">
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:14px;">
-      <button onclick="document.getElementById('sidebar').classList.toggle('open')"
-        style="display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;" id="menu-btn">☰</button>
+      <button onclick="toggleSidebar()"
+        style="background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;display:none;" id="menu-btn">☰</button>
       <div class="topbar-title" id="page-title">Dashboard</div>
     </div>
     <div class="topbar-right">
@@ -1135,49 +1157,6 @@ function updateClock(){
 }
 setInterval(updateClock, 1000);
 updateClock();
-
-// NAVIGATION
-const sections = ['dashboard','monitoring','orders','users','couriers','shops',
-  'finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
-const titles = {
-  'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring',
-  'orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar',
-  'shops':'🏪 Do\'konlar','finance':'💰 Moliya','promo':'🎟️ Promo kodlar',
-  'search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli',
-  'blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot',
-  'admin-orders':'📱 Admin buyurtmalari'
-};
-
-function showSection(name){
-  sections.forEach(s => {
-    document.getElementById('sec-'+s).classList.remove('active');
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-  });
-  document.getElementById('sec-'+name).classList.add('active');
-  document.getElementById('page-title').textContent = titles[name]||name;
-  document.querySelectorAll('.nav-item').forEach(el => {
-    if(el.getAttribute('onclick')&&el.getAttribute('onclick').includes("'"+name+"'"))
-      el.classList.add('active');
-  });
-
-  const loaders = {
-    'dashboard': loadDashboard,
-    'monitoring': loadMonitoring,
-    'orders': loadOrders,
-    'users': loadUsers,
-    'couriers': loadCouriers,
-    'shops': loadShops,
-    'finance': loadFinance,
-    'promo': loadPromo,
-    'chats': loadChats,
-    'problems': loadProblems,
-    'blocked': loadBlocked,
-    'top': loadTop,
-    'weekly': loadWeekly,
-    'admin-orders': loadAdminOrders
-  };
-  if(loaders[name]) loaders[name]();
-}
 
 // STATUS BADGE
 function statusBadge(s){
@@ -1582,8 +1561,21 @@ document.querySelectorAll('.modal-overlay').forEach(m=>{
   m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
 });
 
-// Mobile menu
-if(window.innerWidth<=768) document.getElementById('menu-btn').style.display='block';
+// Register loaders on window so showSection (defined in <head>) can call them
+window.loadDashboard = loadDashboard;
+window.loadMonitoring = loadMonitoring;
+window.loadOrders = loadOrders;
+window.loadUsers = loadUsers;
+window.loadCouriers = loadCouriers;
+window.loadShops = loadShops;
+window.loadFinance = loadFinance;
+window.loadPromo = loadPromo;
+window.loadChats = loadChats;
+window.loadProblems = loadProblems;
+window.loadBlocked = loadBlocked;
+window.loadTop = loadTop;
+window.loadWeekly = loadWeekly;
+window.loadAdminOrders = loadAdminOrders;
 
 // AUTO REFRESH monitoring every 30s
 setInterval(()=>{

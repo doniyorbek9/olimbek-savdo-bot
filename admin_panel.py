@@ -672,24 +672,33 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     border-right:1px solid rgba(255,255,255,0.07);
     display:flex;flex-direction:column;
     position:fixed;height:100vh;
-    overflow-y:auto;z-index:100;
+    overflow:hidden;
+    z-index:100;
     box-shadow:4px 0 32px rgba(0,0,0,0.4);
+  }
+  .sidebar-nav{
+    padding:8px 0;
+    flex:1;
+    overflow-y:auto;
+    overflow-x:hidden;
     scrollbar-width:none;
   }
-  .sidebar::-webkit-scrollbar{display:none;}
+  .sidebar-nav::-webkit-scrollbar{display:none;}
 
   /* Logo */
   .sidebar-logo{
-    padding:22px 20px 18px;
+    padding:20px 20px 16px;
     border-bottom:1px solid rgba(255,255,255,0.07);
-    position:relative;overflow:hidden;
+    position:relative;
+    flex-shrink:0;
   }
   .sidebar-logo::before{
     content:'';position:absolute;
-    top:-30px;left:-30px;
-    width:140px;height:140px;
-    background:radial-gradient(circle, rgba(0,212,170,0.12) 0%, transparent 70%);
+    top:-20px;left:-20px;
+    width:120px;height:120px;
+    background:radial-gradient(circle, rgba(0,212,170,0.1) 0%, transparent 70%);
     pointer-events:none;
+    z-index:0;
   }
   .logo-badge{
     display:inline-flex;align-items:center;gap:6px;
@@ -697,19 +706,19 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     border:1px solid rgba(0,212,170,0.25);
     padding:3px 10px;border-radius:20px;
     font-size:9px;color:#00d4aa;font-weight:700;letter-spacing:1.2px;
-    text-transform:uppercase;margin-bottom:10px;
+    text-transform:uppercase;margin-bottom:8px;
+    position:relative;z-index:1;
   }
   .logo-dot{width:5px;height:5px;background:#00d4aa;border-radius:50%;animation:pulse 2s infinite;}
   .sidebar-logo h1{
-    font-family:'Syne',sans-serif;font-size:20px;font-weight:800;
-    line-height:1.1;
+    font-family:'Syne',sans-serif;font-size:22px;font-weight:800;
+    line-height:1.15;
     background:linear-gradient(135deg,#00d4aa,#0ea5e9);
     -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    position:relative;z-index:1;
   }
-  .sidebar-logo span{font-size:11px;color:#475569;margin-top:2px;display:block;}
+  .sidebar-logo span{font-size:11px;color:#475569;margin-top:3px;display:block;position:relative;z-index:1;}
 
-  /* Nav */
-  .sidebar-nav{padding:8px 0;flex:1;}
   .nav-group{
     padding:12px 20px 4px;
     font-size:9px;font-weight:700;color:#334155;

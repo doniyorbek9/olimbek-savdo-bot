@@ -682,21 +682,28 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     padding:16px;text-align:center;}
   .monitor-num{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;margin-bottom:4px;}
   .monitor-lbl{font-size:12px;color:var(--text2);}
+  #menu-btn { display: none; }
   @media(max-width:768px){
-    .sidebar{transform:translateX(-100%);transition:transform 0.3s;z-index:300;position:fixed;}
-    .sidebar.open{transform:translateX(0);}
-    .sidebar.open::after{content:'';position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:-1;}
-    .main{margin-left:0;}
-    .two-col{grid-template-columns:1fr;}
-    .stats-grid{grid-template-columns:repeat(2,1fr);}
-    #menu-btn{display:block !important;}
-    .topbar{padding:12px 14px;}
-    .content{padding:12px;}
-    .stat-card{padding:14px;}
-    .stat-value{font-size:22px;}
-    .scrollable-table{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-    table{min-width:600px;}
-    .modal{width:96%;padding:18px;}
+    #menu-btn { display: block !important; }
+    .sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.3s ease;
+      z-index: 9999 !important;
+      position: fixed !important;
+      top: 0; left: 0;
+      height: 100vh;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .main { margin-left: 0 !important; }
+    .two-col { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2,1fr); }
+    .topbar { padding: 12px 14px; }
+    .content { padding: 12px; }
+    .stat-card { padding: 14px; }
+    .stat-value { font-size: 22px; }
+    .scrollable-table { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { min-width: 600px; }
+    .modal { width: 96%; padding: 18px; }
   }
 </style>
 </head>
@@ -773,8 +780,8 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <div class="main">
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:14px;">
-      <button onclick="document.getElementById('sidebar').classList.toggle('open')"
-        style="background:none;border:none;color:var(--text);font-size:24px;cursor:pointer;display:none;padding:4px 8px;border-radius:8px;" id="menu-btn">☰</button>
+      <button onclick="event.stopPropagation();document.getElementById('sidebar').classList.contains('open')?closeSidebar():openSidebar()"
+        style="background:none;border:none;color:var(--text);font-size:24px;cursor:pointer;padding:4px 8px;border-radius:8px;line-height:1;" id="menu-btn">☰</button>
       <div class="topbar-title" id="page-title">Dashboard</div>
     </div>
     <div class="topbar-right">
@@ -1591,24 +1598,24 @@ document.querySelectorAll('.modal-overlay').forEach(m=>{
   m.addEventListener('click',e=>{ if(e.target===m) m.classList.remove('open'); });
 });
 
-// Mobile menu
-function toggleSidebar(){
-  const sb = document.getElementById('sidebar');
-  sb.classList.toggle('open');
+// Mobile sidebar overlay
+var sidebarOverlay = document.createElement('div');
+sidebarOverlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9998;';
+document.body.appendChild(sidebarOverlay);
+sidebarOverlay.addEventListener('click', function(){ closeSidebar(); });
+
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  sidebarOverlay.style.display = 'none';
 }
-document.getElementById('menu-btn').addEventListener('click', toggleSidebar);
-// Sidebardan tashqarini bosganda yopish
-document.addEventListener('click', function(e){
-  const sb = document.getElementById('sidebar');
-  const btn = document.getElementById('menu-btn');
-  if(sb.classList.contains('open') && !sb.contains(e.target) && e.target !== btn){
-    sb.classList.remove('open');
-  }
-});
-// Nav itemni bosganda mobilda sidebar yopsin
-document.querySelectorAll('.nav-item').forEach(item=>{
-  item.addEventListener('click', ()=>{
-    if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
+function openSidebar(){
+  document.getElementById('sidebar').classList.add('open');
+  sidebarOverlay.style.display = 'block';
+}
+
+document.querySelectorAll('.nav-item').forEach(function(item){
+  item.addEventListener('click', function(){
+    if(window.innerWidth <= 768) closeSidebar();
   });
 });
 

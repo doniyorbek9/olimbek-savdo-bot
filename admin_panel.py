@@ -1143,6 +1143,163 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     .stats-grid{grid-template-columns:1fr;}
   }
 
+  /* ===== AI CHAT WIDGET ===== */
+  .ai-chat-wrap{
+    background:rgba(17,24,39,0.85);
+    backdrop-filter:blur(16px);
+    border:1px solid rgba(0,212,170,0.2);
+    border-radius:18px;
+    overflow:hidden;
+    margin-bottom:22px;
+    box-shadow:0 0 40px rgba(0,212,170,0.06);
+    position:relative;
+  }
+  .ai-chat-wrap::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,#00d4aa,#0ea5e9,#8b5cf6);
+  }
+  .ai-chat-header{
+    padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    cursor:pointer;
+    user-select:none;
+  }
+  .ai-chat-header-left{display:flex;align-items:center;gap:12px;}
+  .ai-avatar{
+    width:36px;height:36px;
+    background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+    border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;
+    box-shadow:0 4px 14px rgba(0,212,170,0.35);
+    flex-shrink:0;
+  }
+  .ai-header-text{}
+  .ai-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#e2e8f0;}
+  .ai-subtitle{font-size:11px;color:#475569;margin-top:1px;}
+  .ai-status{
+    display:flex;align-items:center;gap:5px;
+    font-size:11px;color:#00d4aa;
+  }
+  .ai-status-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;animation:pulse 2s infinite;}
+  .ai-collapse-btn{
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    color:#64748b;width:28px;height:28px;
+    border-radius:8px;cursor:pointer;font-size:12px;
+    display:flex;align-items:center;justify-content:center;
+    transition:all 0.2s;
+  }
+  .ai-collapse-btn:hover{color:#e2e8f0;background:rgba(0,212,170,0.1);border-color:rgba(0,212,170,0.3);}
+
+  .ai-chat-body{
+    height:320px;
+    overflow-y:auto;
+    padding:16px 20px;
+    scroll-behavior:smooth;
+    scrollbar-width:thin;
+    scrollbar-color:rgba(0,212,170,0.2) transparent;
+    display:flex;flex-direction:column;gap:10px;
+    transition:height 0.3s ease;
+  }
+  .ai-chat-body.collapsed{height:0;padding:0;overflow:hidden;}
+  .ai-chat-body::-webkit-scrollbar{width:4px;}
+  .ai-chat-body::-webkit-scrollbar-track{background:transparent;}
+  .ai-chat-body::-webkit-scrollbar-thumb{background:rgba(0,212,170,0.2);border-radius:2px;}
+
+  /* Messages */
+  .ai-msg{display:flex;gap:10px;align-items:flex-start;animation:msgin 0.25s ease;}
+  @keyframes msgin{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+  .ai-msg.user{flex-direction:row-reverse;}
+  .ai-msg-avatar{
+    width:28px;height:28px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:13px;flex-shrink:0;
+  }
+  .ai-msg-avatar.bot{background:linear-gradient(135deg,#00d4aa,#0ea5e9);}
+  .ai-msg-avatar.usr{background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.3);font-size:11px;}
+  .ai-msg-bubble{
+    max-width:78%;
+    padding:10px 14px;
+    border-radius:12px;
+    font-size:13px;line-height:1.6;
+  }
+  .ai-msg.bot .ai-msg-bubble{
+    background:rgba(0,212,170,0.07);
+    border:1px solid rgba(0,212,170,0.12);
+    color:#e2e8f0;
+    border-top-left-radius:4px;
+  }
+  .ai-msg.user .ai-msg-bubble{
+    background:rgba(139,92,246,0.12);
+    border:1px solid rgba(139,92,246,0.2);
+    color:#e2e8f0;
+    border-top-right-radius:4px;
+  }
+  .ai-msg-time{font-size:10px;color:#334155;margin-top:4px;}
+
+  /* Typing indicator */
+  .ai-typing{display:flex;gap:10px;align-items:center;}
+  .typing-dots{display:flex;gap:4px;padding:10px 14px;background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.12);border-radius:12px;border-top-left-radius:4px;}
+  .typing-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;opacity:0.4;}
+  .typing-dot:nth-child(1){animation:typingbounce 1.2s 0s infinite;}
+  .typing-dot:nth-child(2){animation:typingbounce 1.2s 0.2s infinite;}
+  .typing-dot:nth-child(3){animation:typingbounce 1.2s 0.4s infinite;}
+  @keyframes typingbounce{0%,60%,100%{transform:translateY(0);opacity:0.4;}30%{transform:translateY(-6px);opacity:1;}}
+
+  /* Quick prompts */
+  .ai-quick-prompts{
+    padding:10px 20px;
+    display:flex;gap:8px;flex-wrap:wrap;
+    border-top:1px solid rgba(255,255,255,0.05);
+  }
+  .ai-quick-prompts.collapsed{display:none;}
+  .ai-qbtn{
+    background:rgba(0,212,170,0.06);
+    border:1px solid rgba(0,212,170,0.15);
+    color:#94a3b8;font-size:11px;
+    padding:5px 12px;border-radius:20px;
+    cursor:pointer;transition:all 0.15s;
+    white-space:nowrap;
+  }
+  .ai-qbtn:hover{background:rgba(0,212,170,0.12);color:#e2e8f0;border-color:rgba(0,212,170,0.3);}
+
+  /* Input */
+  .ai-chat-input-row{
+    padding:14px 20px;
+    display:flex;gap:10px;align-items:center;
+    border-top:1px solid rgba(255,255,255,0.06);
+    background:rgba(0,0,0,0.15);
+  }
+  .ai-chat-input-row.collapsed{display:none;}
+  .ai-input{
+    flex:1;
+    background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:12px;
+    padding:10px 16px;
+    color:#e2e8f0;font-size:13px;
+    outline:none;
+    font-family:'DM Sans',sans-serif;
+    transition:all 0.2s;
+    resize:none;
+    height:40px;max-height:120px;
+  }
+  .ai-input:focus{border-color:#00d4aa;background:rgba(0,212,170,0.05);box-shadow:0 0 0 3px rgba(0,212,170,0.08);}
+  .ai-input::placeholder{color:#334155;}
+  .ai-send-btn{
+    width:40px;height:40px;
+    background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+    border:none;border-radius:12px;
+    color:#000;font-size:16px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:all 0.2s;flex-shrink:0;
+    box-shadow:0 4px 14px rgba(0,212,170,0.3);
+  }
+  .ai-send-btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,212,170,0.45);}
+  .ai-send-btn:disabled{opacity:0.4;transform:none;cursor:not-allowed;}
+
   /* ===== LOGOUT LOADING OVERLAY ===== */
   .logout-loader{
     position:fixed;inset:0;z-index:9999;
@@ -1348,6 +1505,54 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 
     <!-- ===== DASHBOARD ===== -->
     <div class="section-page active" id="sec-dashboard">
+
+      <!-- AI CHAT WIDGET -->
+      <div class="ai-chat-wrap" id="ai-chat-wrap">
+        <div class="ai-chat-header" onclick="toggleAiChat()">
+          <div class="ai-chat-header-left">
+            <div class="ai-avatar">🤖</div>
+            <div class="ai-header-text">
+              <div class="ai-title">Olimbek AI Assistant</div>
+              <div class="ai-subtitle">Statistika va ma'lumotlar bo'yicha savollar bering</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <div class="ai-status"><div class="ai-status-dot"></div> Faol</div>
+            <button class="ai-collapse-btn" id="ai-collapse-icon">▲</button>
+          </div>
+        </div>
+        <div class="ai-chat-body" id="ai-chat-body">
+          <!-- Welcome message -->
+          <div class="ai-msg bot">
+            <div class="ai-msg-avatar bot">🤖</div>
+            <div>
+              <div class="ai-msg-bubble">
+                Salom! Men <strong>Olimbek SAVDO</strong> AI assistentiman. 👋<br><br>
+                Sizga quyidagi narsalarda yordam bera olaman:<br>
+                • Bugungi yoki umumiy statistika<br>
+                • Buyurtma, mijoz, do'kon ma'lumotlari<br>
+                • Tahlil va hisobotlar<br><br>
+                Qanday savol bor?
+              </div>
+              <div class="ai-msg-time" id="ai-welcome-time"></div>
+            </div>
+          </div>
+        </div>
+        <div class="ai-quick-prompts" id="ai-quick-prompts">
+          <button class="ai-qbtn" onclick="aiQuick(this)">📊 Bugungi statistika</button>
+          <button class="ai-qbtn" onclick="aiQuick(this)">💰 Jami daromad</button>
+          <button class="ai-qbtn" onclick="aiQuick(this)">📦 Oxirgi buyurtmalar</button>
+          <button class="ai-qbtn" onclick="aiQuick(this)">👥 Mijozlar soni</button>
+          <button class="ai-qbtn" onclick="aiQuick(this)">🏪 Do'konlar holati</button>
+          <button class="ai-qbtn" onclick="aiQuick(this)">🚚 Kuryerlar</button>
+        </div>
+        <div class="ai-chat-input-row" id="ai-input-row">
+          <textarea class="ai-input" id="ai-input" placeholder="Savol yozing... (Enter — yuborish)" rows="1"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMsg();}"></textarea>
+          <button class="ai-send-btn" id="ai-send-btn" onclick="sendAiMsg()">➤</button>
+        </div>
+      </div>
+
       <div class="stats-grid" id="stats-grid">
         <div class="stat-card" style="--c1:#00d4aa;--c2:#0ea5e9;">
           <div class="stat-icon">👥</div>
@@ -2175,6 +2380,107 @@ setInterval(()=>{
   api('/admin/api/dashboard').then(d=>{ if(d&&!d.error) document.getElementById('pending-badge').textContent=d.pending||0; });
 }, 30000);
 
+// ===== AI CHAT =====
+(function(){
+  var t = new Date();
+  var el = document.getElementById('ai-welcome-time');
+  if(el) el.textContent = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+})();
+
+var aiCollapsed = false;
+
+function toggleAiChat(){
+  aiCollapsed = !aiCollapsed;
+  var body = document.getElementById('ai-chat-body');
+  var quick = document.getElementById('ai-quick-prompts');
+  var inputRow = document.getElementById('ai-input-row');
+  var icon = document.getElementById('ai-collapse-icon');
+  body.classList.toggle('collapsed', aiCollapsed);
+  quick.classList.toggle('collapsed', aiCollapsed);
+  inputRow.classList.toggle('collapsed', aiCollapsed);
+  icon.textContent = aiCollapsed ? '▼' : '▲';
+}
+
+function aiQuick(btn){
+  document.getElementById('ai-input').value = btn.textContent.trim().replace(/^[^ ]+ /,'');
+  // map emoji prefix to real text
+  var map = {
+    '📊 Bugungi statistika': 'Bugungi statistikani ko\'rsating',
+    '💰 Jami daromad': 'Jami daromad qancha?',
+    '📦 Oxirgi buyurtmalar': 'Oxirgi buyurtmalarni ko\'rsating',
+    '👥 Mijozlar soni': 'Nechta mijoz bor?',
+    '🏪 Do\'konlar holati': 'Do\'konlar holatini ko\'rsating',
+    '🚚 Kuryerlar': 'Kuryerlar haqida ma\'lumot bering',
+  };
+  var key = btn.textContent.trim();
+  document.getElementById('ai-input').value = map[key] || key;
+  sendAiMsg();
+}
+
+var aiHistory = [];
+
+async function sendAiMsg(){
+  var inp = document.getElementById('ai-input');
+  var msg = inp.value.trim();
+  if(!msg) return;
+  inp.value = '';
+
+  appendAiMsg('user', msg);
+  aiHistory.push({role:'user', content: msg});
+
+  var sendBtn = document.getElementById('ai-send-btn');
+  sendBtn.disabled = true;
+
+  // Show typing
+  var typingId = 'typing-'+Date.now();
+  var typingHtml = '<div class="ai-msg bot" id="'+typingId+'"><div class="ai-msg-avatar bot">🤖</div><div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
+  var body = document.getElementById('ai-chat-body');
+  body.insertAdjacentHTML('beforeend', typingHtml);
+  body.scrollTop = body.scrollHeight;
+
+  try {
+    var resp = await fetch('/admin/api/ai', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message: msg, history: aiHistory.slice(-8)})
+    });
+    var data = await resp.json();
+    var typingEl = document.getElementById(typingId);
+    if(typingEl) typingEl.remove();
+
+    if(data.reply){
+      appendAiMsg('bot', data.reply);
+      aiHistory.push({role:'assistant', content: data.reply});
+    } else {
+      appendAiMsg('bot', '❌ Xatolik: ' + (data.error||'Noma\'lum xato'));
+    }
+  } catch(e) {
+    var typingEl2 = document.getElementById(typingId);
+    if(typingEl2) typingEl2.remove();
+    appendAiMsg('bot', '❌ Server bilan aloqa yo\'q. Qayta urinib ko\'ring.');
+  }
+
+  sendBtn.disabled = false;
+  inp.focus();
+}
+
+function appendAiMsg(role, text){
+  var body = document.getElementById('ai-chat-body');
+  var t = new Date();
+  var time = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
+  var avatarCls = role==='bot' ? 'bot' : 'usr';
+  var avatarIcon = role==='bot' ? '🤖' : '👤';
+  var formatted = text.replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+  var html = '<div class="ai-msg '+role+'">'
+    +'<div class="ai-msg-avatar '+avatarCls+'">'+avatarIcon+'</div>'
+    +'<div>'
+    +'<div class="ai-msg-bubble">'+formatted+'</div>'
+    +'<div class="ai-msg-time">'+time+'</div>'
+    +'</div></div>';
+  body.insertAdjacentHTML('beforeend', html);
+  body.scrollTop = body.scrollHeight;
+}
+
 // ===== LOGOUT ANIMATION =====
 function doLogout(e){
   e.preventDefault();
@@ -2733,6 +3039,156 @@ def api_admin_orders():
         return jsonify({'orders': orders})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ===================== AI CHAT ROUTE =====================
+@app.route('/admin/api/ai', methods=['POST'])
+@login_required
+def api_ai_chat():
+    try:
+        import urllib.request
+        import json as _json
+
+        data = request.json
+        user_msg = data.get('message', '').strip()
+        history = data.get('history', [])
+
+        if not user_msg:
+            return jsonify({'error': "Bo'sh xabar"}), 400
+
+        GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+        if not GROQ_API_KEY:
+            return jsonify({'error': "GROQ_API_KEY sozlanmagan. Railway → Variables ga qo'shing: GROQ_API_KEY=gsk_xxxx"}), 500
+
+        # --- DB dan real kontekst yig'ish ---
+        ctx_lines = []
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            today = datetime.now().strftime("%d.%m.%Y")
+
+            c.execute("SELECT COUNT(*) as n FROM users")
+            ctx_lines.append(f"Jami mijozlar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM users WHERE is_blocked=true")
+            ctx_lines.append(f"Bloklangan mijozlar: {c.fetchone()['n']}")
+
+            c.execute("SELECT id, name, is_open, COALESCE(rating,0) as rating FROM shops ORDER BY id")
+            shops = c.fetchall()
+            ctx_lines.append(f"Do'konlar soni: {len(shops)}")
+            for s in shops:
+                holat = "Ochiq" if s['is_open'] else "Yopiq"
+                ctx_lines.append(f"  - #{s['id']} {s['name']} | {holat} | Reyting: {float(s['rating']):.1f}")
+
+            c.execute("SELECT COUNT(*) as n FROM couriers")
+            ctx_lines.append(f"Jami kuryerlar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_busy=false AND is_blocked=false")
+            ctx_lines.append(f"Bo'sh kuryerlar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders")
+            ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='pending'")
+            ctx_lines.append(f"Kutilayotgan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivering'")
+            ctx_lines.append(f"Yo'ldagi buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered'")
+            ctx_lines.append(f"Yetkazilgan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='cancelled'")
+            ctx_lines.append(f"Bekor qilingan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
+            total_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Jami daromad: {total_income:,.0f} so'm")
+
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
+            today_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Bugungi daromad: {today_income:,.0f} so'm")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today}%",))
+            ctx_lines.append(f"Bugungi buyurtmalar soni: {c.fetchone()['n']}")
+
+            # Oxirgi 5 ta buyurtma
+            c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at
+                         FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
+                         ORDER BY o.id DESC LIMIT 5""")
+            recent = c.fetchall()
+            if recent:
+                ctx_lines.append("Oxirgi 5 ta buyurtma:")
+                for r in recent:
+                    ctx_lines.append(f"  #{r['id']} | {r['shop']} | {float(r['total_sum']):,.0f} so'm | {r['status']} | {r['created_at']}")
+
+            # Haftalik
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
+            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (week_ago,))
+            ctx_lines.append(f"Oxirgi 7 kunda yangi mijozlar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
+            ctx_lines.append(f"Oxirgi 7 kunda yetkazilgan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
+            week_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Oxirgi 7 kunda daromad: {week_income:,.0f} so'm")
+
+            conn.close()
+        except Exception as db_err:
+            ctx_lines.append(f"[DB xatosi: {str(db_err)}]")
+
+        db_context = "\n".join(ctx_lines)
+        now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+        system_prompt = f"""Sen Olimbek SAVDO admin panelining AI assistentisan. Hozirgi vaqt: {now_str}.
+
+Quyida REAL DATABASE ma'lumotlari berilgan — faqat shu ma'lumotlarga asoslanib javob ber:
+
+{db_context}
+
+Qoidalar:
+- Faqat yuqoridagi real ma'lumotlarga asoslanib javob ber
+- Uzbek tilida javob ber
+- Qisqa, aniq va foydali javob ber
+- Raqamlarni chiroyli formatlash (1,500,000 so'm)
+- Agar so'ralgan ma'lumot bazada yo'q bo'lsa, "Bu ma'lumot bazada mavjud emas" de
+- Javobni qisqa va aniq qilib ber"""
+
+        # Messages tuzish
+        messages = []
+        for h in history[-6:]:
+            if h.get('role') in ('user', 'assistant') and h.get('content'):
+                messages.append({'role': h['role'], 'content': h['content']})
+        if not messages or messages[-1]['role'] != 'user':
+            messages.append({'role': 'user', 'content': user_msg})
+        elif messages[-1]['content'] != user_msg:
+            messages.append({'role': 'user', 'content': user_msg})
+
+        payload = _json.dumps({
+            'model': 'llama-3.1-8b-instant',
+            'max_tokens': 1024,
+            'messages': [{'role': 'system', 'content': system_prompt}] + messages
+        }).encode('utf-8')
+
+        req = urllib.request.Request(
+            'https://api.groq.com/openai/v1/chat/completions',
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {GROQ_API_KEY}'
+            },
+            method='POST'
+        )
+
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            result = _json.loads(resp.read().decode('utf-8'))
+
+        reply = result['choices'][0]['message']['content']
+        return jsonify({'reply': reply})
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 # ===================== RUN (standalone) =====================
 if __name__ == '__main__':

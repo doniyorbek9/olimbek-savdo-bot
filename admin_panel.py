@@ -683,11 +683,20 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
   .monitor-num{font-family:'Syne',sans-serif;font-size:32px;font-weight:800;margin-bottom:4px;}
   .monitor-lbl{font-size:12px;color:var(--text2);}
   @media(max-width:768px){
-    .sidebar{transform:translateX(-100%);transition:transform 0.3s;}
+    .sidebar{transform:translateX(-100%);transition:transform 0.3s;z-index:300;position:fixed;}
     .sidebar.open{transform:translateX(0);}
+    .sidebar.open::after{content:'';position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:-1;}
     .main{margin-left:0;}
     .two-col{grid-template-columns:1fr;}
     .stats-grid{grid-template-columns:repeat(2,1fr);}
+    #menu-btn{display:block !important;}
+    .topbar{padding:12px 14px;}
+    .content{padding:12px;}
+    .stat-card{padding:14px;}
+    .stat-value{font-size:22px;}
+    .scrollable-table{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    table{min-width:600px;}
+    .modal{width:96%;padding:18px;}
   }
 </style>
 </head>
@@ -765,7 +774,7 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:14px;">
       <button onclick="document.getElementById('sidebar').classList.toggle('open')"
-        style="display:none;background:none;border:none;color:var(--text);font-size:20px;cursor:pointer;" id="menu-btn">☰</button>
+        style="background:none;border:none;color:var(--text);font-size:24px;cursor:pointer;display:none;padding:4px 8px;border-radius:8px;" id="menu-btn">☰</button>
       <div class="topbar-title" id="page-title">Dashboard</div>
     </div>
     <div class="topbar-right">
@@ -1140,12 +1149,12 @@ updateClock();
 const sections = ['dashboard','monitoring','orders','users','couriers','shops',
   'finance','promo','search','chats','problems','blocked','top','weekly','admin-orders'];
 const titles = {
-  'dashboard':'📊 Dashboard','monitoring':'👁️ Jonli monitoring',
-  'orders':'📦 Buyurtmalar','users':'👥 Mijozlar','couriers':'🚚 Kuryerlar',
-  'shops':'🏪 Do\'konlar','finance':'💰 Moliya','promo':'🎟️ Promo kodlar',
-  'search':'🔍 Qidirish','chats':'💬 Chatlar','problems':'⚠️ Muammoli',
-  'blocked':'🚫 Bloklangan','top':'🏆 Top mijozlar','weekly':'📈 Haftalik hisobot',
-  'admin-orders':'📱 Admin buyurtmalari'
+  "dashboard":"📊 Dashboard","monitoring":"👁️ Jonli monitoring",
+  "orders":"📦 Buyurtmalar","users":"👥 Mijozlar","couriers":"🚚 Kuryerlar",
+  "shops":"🏪 Do\u2019konlar","finance":"💰 Moliya","promo":"🎟️ Promo kodlar",
+  "search":"🔍 Qidirish","chats":"💬 Chatlar","problems":"⚠️ Muammoli",
+  "blocked":"🚫 Bloklangan","top":"🏆 Top mijozlar","weekly":"📈 Haftalik hisobot",
+  "admin-orders":"📱 Admin buyurtmalari"
 };
 
 function showSection(name){
@@ -1194,17 +1203,19 @@ function fmtNum(n){return Number(n||0).toLocaleString('uz-UZ');}
 
 // ===== DASHBOARD =====
 async function loadDashboard(){
-  const d = await api('/admin/api/dashboard');
-  document.getElementById('s-users').textContent = d.users;
-  document.getElementById('s-shops').textContent = d.shops;
-  document.getElementById('s-shops-open').textContent = d.shops_open+' ta ochiq';
-  document.getElementById('s-couriers').textContent = d.couriers;
-  document.getElementById('s-orders').textContent = d.total_orders;
+  let d;
+  try { d = await api('/admin/api/dashboard'); } catch(e){ console.error('Dashboard xatosi:',e); return; }
+  if(!d||d.error){ console.error('Dashboard API xatosi:', d?.error||'Nomalum'); return; }
+  document.getElementById('s-users').textContent = d.users??'—';
+  document.getElementById('s-shops').textContent = d.shops??'—';
+  document.getElementById('s-shops-open').textContent = (d.shops_open??'—')+' ta ochiq';
+  document.getElementById('s-couriers').textContent = d.couriers??'—';
+  document.getElementById('s-orders').textContent = d.total_orders??'—';
   document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
   document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
-  document.getElementById('s-pending').textContent = d.pending;
-  document.getElementById('s-onway').textContent = d.on_way;
-  document.getElementById('pending-badge').textContent = d.pending;
+  document.getElementById('s-pending').textContent = d.pending??'—';
+  document.getElementById('s-onway').textContent = d.on_way??'—';
+  document.getElementById('pending-badge').textContent = d.pending??0;
 
   const ro = document.getElementById('recent-orders');
   ro.innerHTML = (d.recent_orders||[]).map(o=>`<tr>
@@ -1583,12 +1594,30 @@ document.querySelectorAll('.modal-overlay').forEach(m=>{
 });
 
 // Mobile menu
-if(window.innerWidth<=768) document.getElementById('menu-btn').style.display='block';
+function toggleSidebar(){
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('open');
+}
+document.getElementById('menu-btn').addEventListener('click', toggleSidebar);
+// Sidebardan tashqarini bosganda yopish
+document.addEventListener('click', function(e){
+  const sb = document.getElementById('sidebar');
+  const btn = document.getElementById('menu-btn');
+  if(sb.classList.contains('open') && !sb.contains(e.target) && e.target !== btn){
+    sb.classList.remove('open');
+  }
+});
+// Nav itemni bosganda mobilda sidebar yopsin
+document.querySelectorAll('.nav-item').forEach(item=>{
+  item.addEventListener('click', ()=>{
+    if(window.innerWidth<=768) document.getElementById('sidebar').classList.remove('open');
+  });
+});
 
 // AUTO REFRESH monitoring every 30s
 setInterval(()=>{
   if(document.getElementById('sec-monitoring').classList.contains('active')) loadMonitoring();
-  api('/admin/api/dashboard').then(d=>{ document.getElementById('pending-badge').textContent=d.pending||0; });
+  api('/admin/api/dashboard').then(d=>{ if(d&&!d.error) document.getElementById('pending-badge').textContent=d.pending||0; });
 }, 30000);
 
 // INITIAL LOAD
@@ -1648,15 +1677,17 @@ def api_dashboard():
         c.execute("SELECT COUNT(*) as cnt FROM orders WHERE status='on_way'")
         on_way = c.fetchone()['cnt']
 
-        c.execute("""SELECT o.*, s.name as shop_name FROM orders o
+        c.execute("""SELECT o.id, o.order_uid, o.total_sum, o.status, o.created_at,
+                            s.name as shop_name
+                     FROM orders o
                      LEFT JOIN shops s ON o.shop_id=s.id
-                     ORDER BY o.created_at DESC LIMIT 10""")
+                     ORDER BY o.id DESC LIMIT 10""")
         recent_orders = [dict(r) for r in c.fetchall()]
 
-        c.execute("""SELECT s.*, 
+        c.execute("""SELECT s.id, s.name, s.is_open, COALESCE(s.rating,0) as rating,
                      COUNT(CASE WHEN o.created_at LIKE %s THEN 1 END) as today_count
                      FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
-                     GROUP BY s.id ORDER BY s.name""", (f"{today}%",))
+                     GROUP BY s.id, s.name, s.is_open, s.rating ORDER BY s.name""", (f"{today}%",))
         shops_info = [dict(r) for r in c.fetchall()]
         conn.close()
 
@@ -1668,6 +1699,8 @@ def api_dashboard():
             'recent_orders': recent_orders, 'shops_info': shops_info
         })
     except Exception as e:
+        import traceback
+        print("DASHBOARD ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/monitoring')
@@ -1760,7 +1793,8 @@ def api_users():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT u.*, COUNT(o.id) as order_count,
+        sql = """SELECT u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked,
+                        COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
                  FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
                  WHERE 1=1"""
@@ -1768,12 +1802,14 @@ def api_users():
         if search:
             sql += " AND (u.full_name ILIKE %s OR u.phone ILIKE %s OR CAST(u.id AS TEXT) ILIKE %s OR CAST(u.tg_id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*4
-        sql += " GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked ORDER BY order_count DESC"
+        sql += " GROUP BY u.id, u.tg_id, u.username, u.full_name, u.phone, u.registered_at, u.is_blocked ORDER BY order_count DESC"
         c.execute(sql, params)
         users = [dict(r) for r in c.fetchall()]
         conn.close()
         return jsonify({'users': users, 'total': len(users)})
     except Exception as e:
+        import traceback
+        print("USERS ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/user/block', methods=['POST'])
@@ -1840,7 +1876,11 @@ def api_shops():
         search = request.args.get('search','')
         conn = get_db()
         c = conn.cursor()
-        sql = """SELECT s.*, COUNT(o.id) as order_count,
+        sql = """SELECT s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time,
+                        s.is_open, COALESCE(s.rating,0) as rating, 
+                        COALESCE(s.rating_count,0) as rating_count, 
+                        s.admin_percent, s.created_at,
+                        COUNT(o.id) as order_count,
                         COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_income
                  FROM shops s LEFT JOIN orders o ON s.id=o.shop_id
                  WHERE 1=1"""
@@ -1848,12 +1888,14 @@ def api_shops():
         if search:
             sql += " AND (s.name ILIKE %s OR CAST(s.id AS TEXT) ILIKE %s)"
             params += [f"%{search}%"]*2
-        sql += " GROUP BY s.id ORDER BY total_income DESC"
+        sql += " GROUP BY s.id, s.owner_tg_id, s.name, s.phone, s.card_number, s.work_time, s.is_open, s.rating, s.rating_count, s.admin_percent, s.created_at ORDER BY total_income DESC"
         c.execute(sql, params)
         shops = [dict(r) for r in c.fetchall()]
         conn.close()
         return jsonify({'shops': shops})
     except Exception as e:
+        import traceback
+        print("SHOPS ERROR:", traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/admin/api/finance')

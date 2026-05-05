@@ -3069,9 +3069,10 @@ def api_ai_chat():
         try:
             conn = get_db()
             c = conn.cursor()
-            today = datetime.now().strftime("%d.%m.%Y")
-            week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
-            month_ago = (datetime.now() - timedelta(days=30)).strftime("%d.%m.%Y")
+            today = datetime.now().strftime("%Y-%m-%d")
+            today_uz = datetime.now().strftime("%d.%m.%Y")
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+            month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
 
             # ===== 1. MIJOZ / BUYURTMA ID QIDIRISH =====
             numbers = _re.findall(r'\b\d{4,}\b', user_msg)
@@ -3160,35 +3161,44 @@ def api_ai_chat():
             c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (month_ago,))
             ctx_lines.append(f"Oxirgi 30 kunda yangi mijozlar: {c.fetchone()['n']}")
 
-            # Buyurtmalar
-            c.execute("SELECT COUNT(*) as n FROM orders")
-            ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='pending'")
-            ctx_lines.append(f"Kutilayotgan (pending): {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='confirmed'")
-            ctx_lines.append(f"Tasdiqlangan (confirmed): {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivering'")
-            ctx_lines.append(f"Yo'lda (delivering): {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered'")
-            ctx_lines.append(f"Yetkazilgan (delivered): {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='cancelled'")
-            ctx_lines.append(f"Bekor qilingan (cancelled): {c.fetchone()['n']}")
+            # Buyurtmalar soni
+            try:
+                c.execute("SELECT COUNT(*) as n FROM orders")
+                ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
+                for st, label in [('pending','Kutilayotgan'), ('confirmed','Tasdiqlangan'),
+                                   ('delivering',"Yo'lda"), ('delivered','Yetkazilgan'), ('cancelled','Bekor qilingan')]:
+                    c.execute("SELECT COUNT(*) as n FROM orders WHERE status=%s", (st,))
+                    ctx_lines.append(f"{label} ({st}): {c.fetchone()['n']}")
+            except Exception as e:
+                ctx_lines.append(f"[Buyurtmalar statistika xato: {e}]")
 
-            # Daromad
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
-            ctx_lines.append(f"Jami daromad: {float(c.fetchone()['t']):,.0f} so'm")
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
-            ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
-            ctx_lines.append(f"Haftalik daromad: {float(c.fetchone()['t']):,.0f} so'm")
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (month_ago,))
-            ctx_lines.append(f"Oylik daromad: {float(c.fetchone()['t']):,.0f} so'm")
+            # Daromad - created_at format avtomatik aniqlanadi
+            try:
+                c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
+                ctx_lines.append(f"Jami daromad: {float(c.fetchone()['t']):,.0f} so'm")
 
-            # Bugungi buyurtmalar
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today}%",))
-            ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at>=%s AND status='delivered'", (week_ago,))
-            ctx_lines.append(f"Haftalik yetkazilgan: {c.fetchone()['n']}")
+                c.execute("SELECT created_at FROM orders LIMIT 1")
+                sample = c.fetchone()
+                if sample:
+                    ca_val = sample['created_at']
+                    if hasattr(ca_val, 'date'):
+                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at::date=%s::date", (today,))
+                        ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
+                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s::date", (week_ago,))
+                        ctx_lines.append(f"Haftalik daromad: {float(c.fetchone()['t']):,.0f} so'm")
+                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s::date", (month_ago,))
+                        ctx_lines.append(f"Oylik daromad: {float(c.fetchone()['t']):,.0f} so'm")
+                        c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at::date=%s::date", (today,))
+                        ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
+                        c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered' AND created_at>=%s::date", (week_ago,))
+                        ctx_lines.append(f"Haftalik yetkazilgan: {c.fetchone()['n']}")
+                    else:
+                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today_uz}%",))
+                        ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
+                        c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today_uz}%",))
+                        ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
+            except Exception as e:
+                ctx_lines.append(f"[Daromad xato: {e}]")
 
             # ===== 3. DO'KONLAR =====
             ctx_lines.append("\n=== DO'KONLAR ===")

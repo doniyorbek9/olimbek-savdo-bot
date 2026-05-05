@@ -2402,18 +2402,16 @@ function toggleAiChat(){
 }
 
 function aiQuick(btn){
-  document.getElementById('ai-input').value = btn.textContent.trim().replace(/^[^ ]+ /,'');
-  // map emoji prefix to real text
   var map = {
-    '📊 Bugungi statistika': 'Bugungi statistikani ko\'rsating',
-    '💰 Jami daromad': 'Jami daromad qancha?',
-    '📦 Oxirgi buyurtmalar': 'Oxirgi buyurtmalarni ko\'rsating',
-    '👥 Mijozlar soni': 'Nechta mijoz bor?',
-    '🏪 Do\'konlar holati': 'Do\'konlar holatini ko\'rsating',
-    '🚚 Kuryerlar': 'Kuryerlar haqida ma\'lumot bering',
+    "📊 Bugungi statistika": "Bugungi statistikani korsating",
+    "💰 Jami daromad": "Jami daromad qancha?",
+    "📦 Oxirgi buyurtmalar": "Oxirgi buyurtmalarni korsating",
+    "👥 Mijozlar soni": "Nechta mijoz bor?",
+    "🏪 Do\u2019konlar holati": "Do\u2019konlar holatini korsating",
+    "🚚 Kuryerlar": "Kuryerlar haqida malumot bering"
   };
   var key = btn.textContent.trim();
-  document.getElementById('ai-input').value = map[key] || key;
+  document.getElementById("ai-input").value = map[key] || key;
   sendAiMsg();
 }
 
@@ -2452,12 +2450,12 @@ async function sendAiMsg(){
       appendAiMsg('bot', data.reply);
       aiHistory.push({role:'assistant', content: data.reply});
     } else {
-      appendAiMsg('bot', '❌ Xatolik: ' + (data.error||'Noma\'lum xato'));
+      appendAiMsg('bot', '\u274C Xatolik: ' + (data.error||'Noma\u02BClum xato'));
     }
   } catch(e) {
     var typingEl2 = document.getElementById(typingId);
     if(typingEl2) typingEl2.remove();
-    appendAiMsg('bot', '❌ Server bilan aloqa yo\'q. Qayta urinib ko\'ring.');
+    appendAiMsg('bot', '\u274C Server bilan aloqa yo\u02BCq. Qayta urinib ko\u02BCring.');
   }
 
   sendBtn.disabled = false;

@@ -3163,30 +3163,42 @@ Qoidalar:
         elif messages[-1]['content'] != user_msg:
             messages.append({'role': 'user', 'content': user_msg})
 
-        payload = _json.dumps({
-            'model': 'llama-3.1-8b-instant',
+        import http.client
+        import ssl
+
+        payload_str = _json.dumps({
+            'model': 'llama-3.3-70b-versatile',
             'max_tokens': 1024,
             'messages': [{'role': 'system', 'content': system_prompt}] + messages
-        }).encode('utf-8')
+        })
 
-        req = urllib.request.Request(
-            'https://api.groq.com/openai/v1/chat/completions',
-            data=payload,
+        clean_key = GROQ_API_KEY.strip()
+
+        ctx = ssl.create_default_context()
+        conn = http.client.HTTPSConnection('api.groq.com', context=ctx, timeout=30)
+        conn.request(
+            'POST',
+            '/openai/v1/chat/completions',
+            body=payload_str.encode('utf-8'),
             headers={
                 'Content-Type': 'application/json',
-                'Authorization': f'Bearer {GROQ_API_KEY}'
-            },
-            method='POST'
+                'Authorization': 'Bearer ' + clean_key
+            }
         )
+        resp = conn.getresponse()
+        resp_body = resp.read().decode('utf-8')
+        conn.close()
 
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            result = _json.loads(resp.read().decode('utf-8'))
+        if resp.status != 200:
+            return jsonify({'error': f'Groq xato {resp.status}: {resp_body[:300]}'}), 500
 
+        result = _json.loads(resp_body)
         reply = result['choices'][0]['message']['content']
         return jsonify({'reply': reply})
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        return jsonify({'error': str(e), 'trace': traceback.format_exc()[-500:]}), 500
 
 
 # ===================== RUN (standalone) =====================

@@ -3039,13 +3039,19 @@ def api_admin_orders():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ===================== AI CHAT ROUTE =====================
+# ===================== AI CHAT ROUTE (YAXSHILANGAN) =====================
+# Bu kodni admin_panel__9_.py dagi mavjud api_ai_chat() funksiyasiga ALMASHTIRING
+# Qidiring: "# ===================== AI CHAT ROUTE ====================="
+# Va quyidagi butun funksiyani shu kod bilan almashtiring
+
 @app.route('/admin/api/ai', methods=['POST'])
 @login_required
 def api_ai_chat():
     try:
-        import urllib.request
         import json as _json
+        import re as _re
+        import http.client
+        import ssl
 
         data = request.json
         user_msg = data.get('message', '').strip()
@@ -3058,23 +3064,24 @@ def api_ai_chat():
         if not GROQ_API_KEY:
             return jsonify({'error': "GROQ_API_KEY sozlanmagan. Railway → Variables ga qo'shing: GROQ_API_KEY=gsk_xxxx"}), 500
 
-        # --- DB dan real kontekst yig'ish ---
+        # --- DB dan KENG kontekst yig'ish ---
         ctx_lines = []
         try:
             conn = get_db()
             c = conn.cursor()
             today = datetime.now().strftime("%d.%m.%Y")
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
+            month_ago = (datetime.now() - timedelta(days=30)).strftime("%d.%m.%Y")
 
-            # --- Xabardan ID/telefon raqamlarini aniqlash ---
-            import re as _re
-            numbers = _re.findall(r'\b\d{5,}\b', user_msg)
-
-            # Mijoz ID yoki tg_id bo'yicha qidirish
+            # ===== 1. MIJOZ / BUYURTMA ID QIDIRISH =====
+            numbers = _re.findall(r'\b\d{4,}\b', user_msg)
             for num in numbers:
                 num_int = int(num)
-                # User qidirish
+
+                # Mijoz qidirish (tg_id yoki id bo'yicha)
                 c.execute("""SELECT u.*, COUNT(o.id) as order_count,
-                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
+                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent,
+                                    COALESCE(SUM(CASE WHEN o.status='cancelled' THEN 1 ELSE 0 END),0) as cancelled_count
                              FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
                              WHERE u.tg_id=%s OR u.id=%s
                              GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked""",
@@ -3089,33 +3096,38 @@ def api_ai_chat():
                     ctx_lines.append(f"  Ro'yxatdan: {user['registered_at']}")
                     ctx_lines.append(f"  Bloklangan: {'Ha' if user['is_blocked'] else 'Yo`q'}")
                     ctx_lines.append(f"  Jami buyurtmalar: {user['order_count']}")
+                    ctx_lines.append(f"  Bekor qilingan: {user['cancelled_count']}")
                     ctx_lines.append(f"  Jami sarflagan: {float(user['total_spent']):,.0f} so'm")
 
-                    # Shu mijozning so'nggi buyurtmalari
-                    c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at, o.address
+                    c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at, o.address,
+                                        o.payment_method
                                  FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
-                                 WHERE o.user_tg_id=%s ORDER BY o.id DESC LIMIT 5""", (user['tg_id'],))
+                                 WHERE o.user_tg_id=%s ORDER BY o.id DESC LIMIT 10""", (user['tg_id'],))
                     uorders = c.fetchall()
                     if uorders:
-                        ctx_lines.append(f"  So'nggi buyurtmalari:")
+                        ctx_lines.append(f"  So'nggi 10 buyurtmasi:")
                         for uo in uorders:
                             ctx_lines.append(f"    #{uo['id']} | {uo['shop']} | {float(uo['total_sum']):,.0f} so'm | {uo['status']} | {uo['created_at']}")
 
-                # Order ID bo'yicha qidirish
-                c.execute("""SELECT o.*, s.name as shop_name, u.full_name, u.phone, u.tg_id as u_tg_id
+                # Buyurtma ID bo'yicha qidirish
+                c.execute("""SELECT o.*, s.name as shop_name, u.full_name, u.phone, u.tg_id as u_tg_id, u.username,
+                                    c.full_name as courier_name, c.phone as courier_phone
                              FROM orders o
                              LEFT JOIN shops s ON o.shop_id=s.id
                              LEFT JOIN users u ON u.tg_id=o.user_tg_id
+                             LEFT JOIN couriers c ON c.id=o.courier_id
                              WHERE o.id=%s""", (num_int,))
                 order = c.fetchone()
                 if order and not user:
                     ctx_lines.append(f"=== BUYURTMA #{num} ===")
                     ctx_lines.append(f"  Do'kon: {order['shop_name']}")
-                    ctx_lines.append(f"  Mijoz: {order['full_name'] or 'Nomsiz'} ({order['phone']})")
+                    ctx_lines.append(f"  Mijoz: {order['full_name'] or 'Nomsiz'} | Tel: {order['phone']} | TG: {order['u_tg_id']}")
                     ctx_lines.append(f"  Summa: {float(order['total_sum']):,.0f} so'm")
                     ctx_lines.append(f"  Holat: {order['status']}")
                     ctx_lines.append(f"  Manzil: {order['address']}")
                     ctx_lines.append(f"  Vaqt: {order['created_at']}")
+                    if order.get('courier_name'):
+                        ctx_lines.append(f"  Kuryer: {order['courier_name']} | Tel: {order['courier_phone']}")
 
             # Telefon raqam bo'yicha qidirish
             phones = _re.findall(r'\b(?:\+998|998|0)?\d{9}\b', user_msg)
@@ -3130,74 +3142,184 @@ def api_ai_chat():
                 if pu:
                     ctx_lines.append(f"=== TELEFON {phone} BO'YICHA MIJOZ ===")
                     ctx_lines.append(f"  Ism: {pu['full_name']}, TG: {pu['tg_id']}, Buyurtmalar: {pu['order_count']}")
+                    ctx_lines.append(f"  Jami sarflagan: {float(pu['total_spent']):,.0f} so'm")
+                    ctx_lines.append(f"  Bloklangan: {'Ha' if pu['is_blocked'] else 'Yo`q'}")
 
-            # --- Umumiy statistika ---
+            # ===== 2. UMUMIY STATISTIKA =====
+            ctx_lines.append("\n=== UMUMIY STATISTIKA ===")
+
+            # Mijozlar
             c.execute("SELECT COUNT(*) as n FROM users")
             ctx_lines.append(f"Jami mijozlar: {c.fetchone()['n']}")
-
             c.execute("SELECT COUNT(*) as n FROM users WHERE is_blocked=true")
             ctx_lines.append(f"Bloklangan mijozlar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (today,))
+            ctx_lines.append(f"Bugun yangi mijozlar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (week_ago,))
+            ctx_lines.append(f"Oxirgi 7 kunda yangi mijozlar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (month_ago,))
+            ctx_lines.append(f"Oxirgi 30 kunda yangi mijozlar: {c.fetchone()['n']}")
 
-            c.execute("SELECT id, name, is_open, COALESCE(rating,0) as rating FROM shops ORDER BY id")
+            # Buyurtmalar
+            c.execute("SELECT COUNT(*) as n FROM orders")
+            ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='pending'")
+            ctx_lines.append(f"Kutilayotgan (pending): {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='confirmed'")
+            ctx_lines.append(f"Tasdiqlangan (confirmed): {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivering'")
+            ctx_lines.append(f"Yo'lda (delivering): {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered'")
+            ctx_lines.append(f"Yetkazilgan (delivered): {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='cancelled'")
+            ctx_lines.append(f"Bekor qilingan (cancelled): {c.fetchone()['n']}")
+
+            # Daromad
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
+            ctx_lines.append(f"Jami daromad: {float(c.fetchone()['t']):,.0f} so'm")
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
+            ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
+            ctx_lines.append(f"Haftalik daromad: {float(c.fetchone()['t']):,.0f} so'm")
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (month_ago,))
+            ctx_lines.append(f"Oylik daromad: {float(c.fetchone()['t']):,.0f} so'm")
+
+            # Bugungi buyurtmalar
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today}%",))
+            ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at>=%s AND status='delivered'", (week_ago,))
+            ctx_lines.append(f"Haftalik yetkazilgan: {c.fetchone()['n']}")
+
+            # ===== 3. DO'KONLAR =====
+            ctx_lines.append("\n=== DO'KONLAR ===")
+            c.execute("""SELECT s.id, s.name, s.is_open, COALESCE(s.rating,0) as rating,
+                                COUNT(o.id) as total_orders,
+                                COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as income
+                         FROM shops s LEFT JOIN orders o ON o.shop_id=s.id
+                         GROUP BY s.id, s.name, s.is_open, s.rating
+                         ORDER BY s.id""")
             shops = c.fetchall()
             ctx_lines.append(f"Do'konlar soni: {len(shops)}")
             for s in shops:
-                holat = "Ochiq" if s['is_open'] else "Yopiq"
-                ctx_lines.append(f"  - #{s['id']} {s['name']} | {holat} | Reyting: {float(s['rating']):.1f}")
+                holat = "Ochiq ✅" if s['is_open'] else "Yopiq ❌"
+                ctx_lines.append(f"  #{s['id']} {s['name']} | {holat} | Reyting: {float(s['rating']):.1f} | Buyurtmalar: {s['total_orders']} | Daromad: {float(s['income']):,.0f} so'm")
 
+            # ===== 4. KURYERLAR =====
+            ctx_lines.append("\n=== KURYERLAR ===")
             c.execute("SELECT COUNT(*) as n FROM couriers")
             ctx_lines.append(f"Jami kuryerlar: {c.fetchone()['n']}")
-
             c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_busy=false AND is_blocked=false")
             ctx_lines.append(f"Bo'sh kuryerlar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_busy=true")
+            ctx_lines.append(f"Band kuryerlar: {c.fetchone()['n']}")
+            c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_blocked=true")
+            ctx_lines.append(f"Bloklangan kuryerlar: {c.fetchone()['n']}")
 
-            c.execute("SELECT COUNT(*) as n FROM orders")
-            ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
+            c.execute("""SELECT c.id, c.full_name, c.phone, c.is_busy, c.is_blocked,
+                                COUNT(o.id) as delivered_count,
+                                COALESCE(SUM(o.delivery_fee),0) as total_fee
+                         FROM couriers c LEFT JOIN orders o ON o.courier_id=c.id AND o.status='delivered'
+                         GROUP BY c.id, c.full_name, c.phone, c.is_busy, c.is_blocked
+                         ORDER BY delivered_count DESC LIMIT 10""")
+            couriers = c.fetchall()
+            if couriers:
+                ctx_lines.append("Top 10 kuryer:")
+                for cur in couriers:
+                    status = "Band" if cur['is_busy'] else ("Bloklangan" if cur['is_blocked'] else "Bo'sh")
+                    ctx_lines.append(f"  #{cur['id']} {cur['full_name']} | Tel: {cur['phone']} | {status} | Yetkazgan: {cur['delivered_count']} | Pul: {float(cur['total_fee']):,.0f} so'm")
 
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='pending'")
-            ctx_lines.append(f"Kutilayotgan buyurtmalar: {c.fetchone()['n']}")
+            # ===== 5. TOP MIJOZLAR =====
+            ctx_lines.append("\n=== TOP 10 MIJOZ (xarid bo'yicha) ===")
+            c.execute("""SELECT u.full_name, u.phone, u.tg_id,
+                                COUNT(o.id) as order_count,
+                                COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
+                         FROM users u JOIN orders o ON u.tg_id=o.user_tg_id
+                         WHERE o.status='delivered'
+                         GROUP BY u.id, u.full_name, u.phone, u.tg_id
+                         ORDER BY total_spent DESC LIMIT 10""")
+            top_users = c.fetchall()
+            for i, tu in enumerate(top_users, 1):
+                ctx_lines.append(f"  {i}. {tu['full_name']} | Tel: {tu['phone']} | TG: {tu['tg_id']} | Buyurtmalar: {tu['order_count']} | Jami: {float(tu['total_spent']):,.0f} so'm")
 
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivering'")
-            ctx_lines.append(f"Yo'ldagi buyurtmalar: {c.fetchone()['n']}")
+            # ===== 6. MUAMMOLI BUYURTMALAR =====
+            ctx_lines.append("\n=== MUAMMOLI BUYURTMALAR (so'nggi 20) ===")
+            c.execute("""SELECT o.id, s.name as shop, u.full_name, u.phone, o.total_sum, o.status, o.created_at, o.address
+                         FROM orders o
+                         LEFT JOIN shops s ON o.shop_id=s.id
+                         LEFT JOIN users u ON u.tg_id=o.user_tg_id
+                         WHERE o.status IN ('cancelled','problem','disputed')
+                         ORDER BY o.id DESC LIMIT 20""")
+            problems = c.fetchall()
+            ctx_lines.append(f"Muammoli buyurtmalar soni: {len(problems)}")
+            for p in problems:
+                ctx_lines.append(f"  #{p['id']} | {p['shop']} | {p['full_name']} ({p['phone']}) | {float(p['total_sum']):,.0f} so'm | {p['status']} | {p['created_at']}")
 
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered'")
-            ctx_lines.append(f"Yetkazilgan buyurtmalar: {c.fetchone()['n']}")
-
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='cancelled'")
-            ctx_lines.append(f"Bekor qilingan buyurtmalar: {c.fetchone()['n']}")
-
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
-            total_income = float(c.fetchone()['t'])
-            ctx_lines.append(f"Jami daromad: {total_income:,.0f} so'm")
-
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
-            today_income = float(c.fetchone()['t'])
-            ctx_lines.append(f"Bugungi daromad: {today_income:,.0f} so'm")
-
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today}%",))
-            ctx_lines.append(f"Bugungi buyurtmalar soni: {c.fetchone()['n']}")
-
-            # Oxirgi 5 ta buyurtma
-            c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at
+            # ===== 7. OXIRGI BUYURTMALAR =====
+            ctx_lines.append("\n=== OXIRGI 20 BUYURTMA ===")
+            c.execute("""SELECT o.id, s.name as shop, u.full_name, o.total_sum, o.status, o.created_at
                          FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
-                         ORDER BY o.id DESC LIMIT 5""")
+                         LEFT JOIN users u ON u.tg_id=o.user_tg_id
+                         ORDER BY o.id DESC LIMIT 20""")
             recent = c.fetchall()
-            if recent:
-                ctx_lines.append("Oxirgi 5 ta buyurtma:")
-                for r in recent:
-                    ctx_lines.append(f"  #{r['id']} | {r['shop']} | {float(r['total_sum']):,.0f} so'm | {r['status']} | {r['created_at']}")
+            for r in recent:
+                ctx_lines.append(f"  #{r['id']} | {r['shop']} | {r['full_name'] or 'Nomsiz'} | {float(r['total_sum']):,.0f} so'm | {r['status']} | {r['created_at']}")
 
-            # Haftalik
-            week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
-            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (week_ago,))
-            ctx_lines.append(f"Oxirgi 7 kunda yangi mijozlar: {c.fetchone()['n']}")
+            # ===== 8. PROMO KODLAR =====
+            ctx_lines.append("\n=== PROMO KODLAR ===")
+            try:
+                c.execute("""SELECT code, discount_percent, discount_amount, usage_count, max_usage, is_active, expires_at
+                             FROM promo_codes ORDER BY id DESC LIMIT 20""")
+                promos = c.fetchall()
+                ctx_lines.append(f"Promo kodlar soni: {len(promos)}")
+                for pr in promos:
+                    aktiv = "Aktiv" if pr['is_active'] else "Nofaol"
+                    if pr.get('discount_percent'):
+                        chegirma = f"{pr['discount_percent']}%"
+                    else:
+                        chegirma = f"{float(pr.get('discount_amount',0)):,.0f} so'm"
+                    ctx_lines.append(f"  {pr['code']} | {chegirma} | {aktiv} | Foydalanilgan: {pr['usage_count']}/{pr.get('max_usage','∞')} | Tugash: {pr.get('expires_at','Yo`q')}")
+            except:
+                ctx_lines.append("  Promo kodlar jadvali topilmadi")
 
-            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
-            ctx_lines.append(f"Oxirgi 7 kunda yetkazilgan buyurtmalar: {c.fetchone()['n']}")
+            # ===== 9. CHATLAR / XABARLAR =====
+            ctx_lines.append("\n=== OXIRGI CHATLAR / XABARLAR ===")
+            try:
+                c.execute("""SELECT m.id, u.full_name, u.phone, m.message, m.created_at, m.is_read
+                             FROM messages m LEFT JOIN users u ON u.tg_id=m.user_tg_id
+                             ORDER BY m.id DESC LIMIT 15""")
+                msgs = c.fetchall()
+                ctx_lines.append(f"So'nggi 15 xabar:")
+                for msg in msgs:
+                    read_s = "✓" if msg['is_read'] else "●yangi"
+                    ctx_lines.append(f"  #{msg['id']} | {msg['full_name']} ({msg['phone']}) | {msg['message'][:80]} | {read_s} | {msg['created_at']}")
+            except:
+                ctx_lines.append("  Xabarlar jadvali topilmadi")
 
-            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
-            week_income = float(c.fetchone()['t'])
-            ctx_lines.append(f"Oxirgi 7 kunda daromad: {week_income:,.0f} so'm")
+            # ===== 10. HAFTALIK HISOBOT =====
+            ctx_lines.append("\n=== HAFTALIK HISOBOT (oxirgi 7 kun) ===")
+            try:
+                c.execute("""SELECT DATE(created_at) as day, COUNT(*) as orders,
+                                    COALESCE(SUM(CASE WHEN status='delivered' THEN total_sum ELSE 0 END),0) as income,
+                                    COALESCE(SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END),0) as cancelled
+                             FROM orders
+                             WHERE created_at>=%s
+                             GROUP BY DATE(created_at)
+                             ORDER BY day DESC""", (week_ago,))
+                weekly = c.fetchall()
+                for w in weekly:
+                    ctx_lines.append(f"  {w['day']}: {w['orders']} buyurtma | Daromad: {float(w['income']):,.0f} so'm | Bekor: {w['cancelled']}")
+            except Exception as we:
+                # DATE() PostgreSQL da ishlashi uchun
+                try:
+                    c.execute("""SELECT TO_CHAR(created_at::date,'DD.MM.YYYY') as day, COUNT(*) as orders,
+                                        COALESCE(SUM(CASE WHEN status='delivered' THEN total_sum ELSE 0 END),0) as income
+                                 FROM orders WHERE created_at>=%s
+                                 GROUP BY created_at::date ORDER BY created_at::date DESC""", (week_ago,))
+                    weekly = c.fetchall()
+                    for w in weekly:
+                        ctx_lines.append(f"  {w['day']}: {w['orders']} buyurtma | Daromad: {float(w['income']):,.0f} so'm")
+                except:
+                    ctx_lines.append("  Haftalik hisobot olishda xato")
 
             conn.close()
         except Exception as db_err:
@@ -3206,23 +3328,25 @@ def api_ai_chat():
         db_context = "\n".join(ctx_lines)
         now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-        system_prompt = f"""Sen Olimbek SAVDO admin panelining AI assistentisan. Hozirgi vaqt: {now_str}.
+        system_prompt = f"""Sen Olimbek SAVDO admin panelining professional AI assistentisan. Hozirgi vaqt: {now_str}.
 
-Quyida REAL DATABASE ma'lumotlari berilgan — faqat shu ma'lumotlarga asoslanib javob ber:
+Quyida REAL DATABASE ma'lumotlari berilgan:
 
 {db_context}
 
 Qoidalar:
 - Faqat yuqoridagi real ma'lumotlarga asoslanib javob ber
-- Uzbek tilida javob ber
-- Qisqa, aniq va foydali javob ber
-- Raqamlarni chiroyli formatlash (1,500,000 so'm)
-- Agar so'ralgan ma'lumot bazada yo'q bo'lsa, "Bu ma'lumot bazada mavjud emas" de
-- Javobni qisqa va aniq qilib ber"""
+- O'zbek tilida javob ber
+- Aniq, foydali va tuzilgan javob ber
+- Raqamlarni chiroyli formatlash: 1,500,000 so'm
+- Agar ma'lumot bazada yo'q bo'lsa: "Bu ma'lumot bazada mavjud emas" de
+- Mijoz, buyurtma, kuryer, do'kon, moliya, promo kod, chat, muammoli buyurtmalar, haftalik hisobot haqida savollarga javob bera olasan
+- Taqqoslash va tahlil qila olasan (masalan: qaysi do'kon ko'p daromad qilgan, qaysi kuryer ko'p yetkazgan)
+- Javobni markdown formatida ber (sarlavhalar uchun ** ishlatma, faqat oddiy matn)"""
 
-        # Messages tuzish
+        # Messages tuzish — oxirgi 12 ta xabar saqlanadi (avvalgi 6 edi)
         messages = []
-        for h in history[-6:]:
+        for h in history[-12:]:
             if h.get('role') in ('user', 'assistant') and h.get('content'):
                 messages.append({'role': h['role'], 'content': h['content']})
         if not messages or messages[-1]['role'] != 'user':
@@ -3230,20 +3354,16 @@ Qoidalar:
         elif messages[-1]['content'] != user_msg:
             messages.append({'role': 'user', 'content': user_msg})
 
-        import http.client
-        import ssl
-
         payload_str = _json.dumps({
             'model': 'llama-3.3-70b-versatile',
-            'max_tokens': 1024,
+            'max_tokens': 2048,  # 1024 dan 2048 ga oshirildi
             'messages': [{'role': 'system', 'content': system_prompt}] + messages
         })
 
         clean_key = GROQ_API_KEY.strip()
-
-        ctx = ssl.create_default_context()
-        conn = http.client.HTTPSConnection('api.groq.com', context=ctx, timeout=30)
-        conn.request(
+        ctx_ssl = ssl.create_default_context()
+        conn_http = http.client.HTTPSConnection('api.groq.com', context=ctx_ssl, timeout=30)
+        conn_http.request(
             'POST',
             '/openai/v1/chat/completions',
             body=payload_str.encode('utf-8'),
@@ -3252,9 +3372,9 @@ Qoidalar:
                 'Authorization': 'Bearer ' + clean_key
             }
         )
-        resp = conn.getresponse()
+        resp = conn_http.getresponse()
         resp_body = resp.read().decode('utf-8')
-        conn.close()
+        conn_http.close()
 
         if resp.status != 200:
             return jsonify({'error': f'Groq xato {resp.status}: {resp_body[:300]}'}), 500
@@ -3266,7 +3386,6 @@ Qoidalar:
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()[-500:]}), 500
-
 
 # ===================== RUN (standalone) =====================
 if __name__ == '__main__':

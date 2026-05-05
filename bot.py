@@ -168,6 +168,100 @@ class AdminOrderState(StatesGroup):
 class ReportErrorState(StatesGroup):
     waiting_text = State()
 
+# ===================== PAGINATION HELPER =====================
+PRODUCTS_PER_PAGE = 8
+
+def build_shop_products_kb(products, shop_id, tg_id, page=0, cart_items=None):
+    """Mijoz uchun mahsulotlar klaviaturasi (paginatsiyali)"""
+    if cart_items is None:
+        cart_items = {}
+    total = len(products)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    start = page * PRODUCTS_PER_PAGE
+    page_prods = products[start:start + PRODUCTS_PER_PAGE]
+
+    kb = InlineKeyboardBuilder()
+    for p in page_prods:
+        qty = cart_items.get(str(p['id']), {}).get('qty', 0)
+        qty_text = f" 🛒 {qty}x" if qty > 0 else ""
+        kb.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}",
+                  callback_data=f"add_cart_{p['id']}_{shop_id}")
+    kb.adjust(1)
+
+    # Navigatsiya
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"sppage_{shop_id}_{page-1}_{tg_id}"))
+    if total_pages > 1:
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="page_info"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"sppage_{shop_id}_{page+1}_{tg_id}"))
+    if nav:
+        kb.row(*nav)
+
+    kb.row(InlineKeyboardButton(text="🛒 Savat", callback_data="view_cart"))
+    kb.row(InlineKeyboardButton(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}"))
+    kb.row(InlineKeyboardButton(text="⬅️ Orqaga", callback_data="back_shops"))
+    return kb.as_markup()
+
+
+def build_owner_products_kb(prods, shop_id, page=0):
+    """Do'kon egasi uchun mahsulotlar klaviaturasi (paginatsiyali)"""
+    total = len(prods)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    start = page * PRODUCTS_PER_PAGE
+    page_prods = prods[start:start + PRODUCTS_PER_PAGE]
+
+    kb = InlineKeyboardBuilder()
+    for p in page_prods:
+        avail = "✅" if (p['is_available'] is None or p['is_available']) else "❌"
+        kb.button(text=f"{avail} {p['name']} — {p['price']:,.0f}",
+                  callback_data=f"edit_prod_{p['id']}")
+    kb.adjust(1)
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"oppage_{shop_id}_{page-1}"))
+    if total_pages > 1:
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="page_info"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"oppage_{shop_id}_{page+1}"))
+    if nav:
+        kb.row(*nav)
+
+    kb.row(InlineKeyboardButton(text="➕ Mahsulot qo'shish", callback_data=f"add_prod_{shop_id}"))
+    kb.row(InlineKeyboardButton(text="🔄 Fayl yangilash", callback_data=f"excel_update_{shop_id}"))
+    return kb.as_markup()
+
+
+def build_admin_products_kb(prods, shop_id, page=0):
+    """Admin uchun mahsulotlar klaviaturasi (paginatsiyali)"""
+    total = len(prods)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    start = page * PRODUCTS_PER_PAGE
+    page_prods = prods[start:start + PRODUCTS_PER_PAGE]
+
+    kb = InlineKeyboardBuilder()
+    for p in page_prods:
+        avail = "✅" if (p['is_available'] is None or p['is_available']) else "❌"
+        kb.button(text=f"{avail} {p['name']} — {p['price']:,.0f}",
+                  callback_data=f"edit_prod_{p['id']}")
+    kb.adjust(1)
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"adpage_{shop_id}_{page-1}"))
+    if total_pages > 1:
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="page_info"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"adpage_{shop_id}_{page+1}"))
+    if nav:
+        kb.row(*nav)
+
+    kb.row(InlineKeyboardButton(text="⬅️ Orqaga", callback_data=f"admin_shop_{shop_id}"))
+    return kb.as_markup()
+
+
 # ===================== DATABASE =====================
 def get_db():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -800,20 +894,12 @@ async def shop_detail(callback: types.CallbackQuery):
         except:
             pass
 
-    text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar:"
+    text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar ({len(products)} ta):"
 
-    kb = InlineKeyboardBuilder()
     cart = cart_get(callback.from_user.id)
     cart_items = cart.get("items", {}) if cart.get("shop_id") == shop_id else {}
-    for p in products:
-        qty = cart_items.get(str(p['id']), {}).get('qty', 0)
-        qty_text = f" ✅ {qty}x" if qty > 0 else ""
-        kb.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}", callback_data=f"add_cart_{p['id']}_{shop_id}")
-    kb.button(text="🛒 Savat", callback_data="view_cart")
-    kb.button(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}")
-    kb.button(text="⬅️ Orqaga", callback_data="back_shops")
-    kb.adjust(1)
-    await callback.message.answer(text, reply_markup=kb.as_markup())
+    kb = build_shop_products_kb(products, shop_id, callback.from_user.id, page=0, cart_items=cart_items)
+    await callback.message.answer(text, reply_markup=kb)
 
 @dp.callback_query(F.data == "back_shops")
 async def back_shops(callback: types.CallbackQuery):
@@ -900,19 +986,10 @@ async def add_to_cart(callback: types.CallbackQuery):
     conn2.close()
 
     if shop:
-        text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar:"
-        kb2 = InlineKeyboardBuilder()
-        cart_items = cart.get("items", {})
-        for p in products_list:
-            qty = cart_items.get(str(p['id']), {}).get('qty', 0)
-            qty_text = f" 🛒 {qty}x" if qty > 0 else ""
-            kb2.button(text=f"{p['name']} — {p['price']:,.0f} so'm{qty_text}", callback_data=f"add_cart_{p['id']}_{shop_id}")
-        kb2.button(text="🛒 Savat", callback_data="view_cart")
-        kb2.button(text="📞 Telefon buyurtma", callback_data=f"phone_order_{shop_id}")
-        kb2.button(text="⬅️ Orqaga", callback_data="back_shops")
-        kb2.adjust(1)
+        cart_items2 = cart.get("items", {})
+        kb2 = build_shop_products_kb(products_list, shop_id, callback.from_user.id, page=0, cart_items=cart_items2)
         try:
-            await callback.message.edit_reply_markup(reply_markup=kb2.as_markup())
+            await callback.message.edit_reply_markup(reply_markup=kb2)
         except:
             pass
 
@@ -1852,13 +1929,8 @@ async def products_menu(message: types.Message):
     prods = c.fetchall()
     conn.close()
 
-    kb = InlineKeyboardBuilder()
-    for p in prods:
-        kb.button(text=f"✏️ {p['name']} — {p['price']:,.0f}", callback_data=f"edit_prod_{p['id']}")
-    kb.button(text="➕ Mahsulot qo'shish", callback_data=f"add_prod_{shop['id']}")
-    kb.button(text="🔄 Fayl yangilash", callback_data=f"excel_update_{shop['id']}")
-    kb.adjust(1)
-    await message.answer(f"📦 Mahsulotlar ({len(prods)} ta):", reply_markup=kb.as_markup())
+    kb = build_owner_products_kb(prods, shop['id'], page=0)
+    await message.answer(f"📦 Mahsulotlar ({len(prods)} ta):", reply_markup=kb)
 
 @dp.callback_query(F.data.startswith("add_prod_"))
 async def add_product(callback: types.CallbackQuery, state: FSMContext):
@@ -2790,6 +2862,7 @@ async def admin_shop_detail(callback: types.CallbackQuery):
 
     kb = InlineKeyboardBuilder()
     kb.button(text="📦 Buyurtmalar", callback_data=f"ashop_orders_{shop_id}")
+    kb.button(text="🛍️ Mahsulotlar", callback_data=f"adpage_view_{shop_id}_0")
     kb.button(text="✏️ Nom tahrirlash", callback_data=f"ashop_edit_name_{shop_id}")
     kb.button(text="💳 Karta tahrirlash", callback_data=f"ashop_edit_card_{shop_id}")
     kb.button(text="📱 Nomer tahrirlash", callback_data=f"ashop_edit_phone_{shop_id}")
@@ -2804,6 +2877,102 @@ async def admin_shop_detail(callback: types.CallbackQuery):
 async def back_admin_shops(callback: types.CallbackQuery):
     await callback.message.delete()
     await admin_shops(callback.message)
+
+# ===================== PAGINATION CALLBACKS =====================
+
+@dp.callback_query(F.data == "page_info")
+async def page_info_cb(callback: types.CallbackQuery):
+    await callback.answer("Sahifa raqami")
+
+# --- MIJOZ: sahifa almashtirish ---
+@dp.callback_query(F.data.startswith("sppage_"))
+async def shop_products_page(callback: types.CallbackQuery):
+    # sppage_{shop_id}_{page}_{tg_id}
+    parts = callback.data.split("_")
+    shop_id = int(parts[1])
+    page = int(parts[2])
+    tg_id = callback.from_user.id
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+    c.execute("SELECT * FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1) ORDER BY name", (shop_id,))
+    products = c.fetchall()
+    conn.close()
+
+    if not shop:
+        await callback.answer("Topilmadi")
+        return
+
+    cart = cart_get(tg_id)
+    cart_items = cart.get("items", {}) if cart.get("shop_id") == shop_id else {}
+    total = len(products)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    text = f"🏪 {shop['name']}\n⭐ Reyting: {shop['rating']:.1f} ({shop['rating_count']} ovoz)\n⏰ Ish vaqti: {shop['work_time'] or 'Ko\'rsatilmagan'}\n\n📦 Mahsulotlar ({total} ta) | {page+1}/{total_pages}:"
+    kb = build_shop_products_kb(products, shop_id, tg_id, page=page, cart_items=cart_items)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except:
+        pass
+    await callback.answer()
+
+
+# --- DO'KON EGASI: sahifa almashtirish ---
+@dp.callback_query(F.data.startswith("oppage_"))
+async def owner_products_page(callback: types.CallbackQuery):
+    # oppage_{shop_id}_{page}
+    parts = callback.data.split("_")
+    shop_id = int(parts[1])
+    page = int(parts[2])
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT * FROM products WHERE shop_id=%s AND (is_available IS NULL OR is_available=1) ORDER BY name", (shop_id,))
+    prods = c.fetchall()
+    conn.close()
+
+    total = len(prods)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    kb = build_owner_products_kb(prods, shop_id, page=page)
+    try:
+        await callback.message.edit_text(f"📦 Mahsulotlar ({total} ta) | {page+1}/{total_pages}:", reply_markup=kb)
+    except:
+        pass
+    await callback.answer()
+
+
+# --- ADMIN: mahsulotlar ko'rish va sahifa almashtirish ---
+@dp.callback_query(F.data.startswith("adpage_"))
+async def admin_products_page(callback: types.CallbackQuery):
+    # adpage_view_{shop_id}_{page} yoki adpage_{shop_id}_{page}
+    parts = callback.data.split("_")
+    if parts[1] == "view":
+        shop_id = int(parts[2])
+        page = int(parts[3])
+    else:
+        shop_id = int(parts[1])
+        page = int(parts[2])
+
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name FROM shops WHERE id=%s", (shop_id,))
+    shop = c.fetchone()
+    c.execute("SELECT * FROM products WHERE shop_id=%s ORDER BY name", (shop_id,))
+    prods = c.fetchall()
+    conn.close()
+
+    total = len(prods)
+    total_pages = max(1, (total + PRODUCTS_PER_PAGE - 1) // PRODUCTS_PER_PAGE)
+    shop_name = shop['name'] if shop else f"Do'kon #{shop_id}"
+    kb = build_admin_products_kb(prods, shop_id, page=page)
+    text = f"🛍️ {shop_name} mahsulotlari ({total} ta) | {page+1}/{total_pages}:"
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except:
+        await callback.message.answer(text, reply_markup=kb)
+    await callback.answer()
+
 
 @dp.callback_query(F.data.startswith("ashop_toggle_"))
 async def admin_toggle_shop(callback: types.CallbackQuery):

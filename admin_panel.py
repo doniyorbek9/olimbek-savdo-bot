@@ -495,11 +495,149 @@ body{
   .left-panel{display:none;}
   .right-panel{width:100%;border-left:none;}
 }
+
+/* ===== LOGIN LOADING OVERLAY ===== */
+.login-loader{
+  position:fixed;inset:0;z-index:9999;
+  display:none;
+  align-items:center;justify-content:center;
+  flex-direction:column;
+  background:#080c18;
+}
+.login-loader.show{display:flex;}
+
+/* Particles canvas */
+#loader-canvas{position:absolute;inset:0;width:100%;height:100%;}
+
+.loader-content{
+  position:relative;z-index:2;
+  display:flex;flex-direction:column;align-items:center;gap:28px;
+}
+
+/* Hexagon spinner */
+.hex-spinner{
+  width:90px;height:90px;position:relative;
+}
+.hex-spinner svg{
+  width:100%;height:100%;
+  animation:hexspin 2.4s linear infinite;
+}
+@keyframes hexspin{to{transform:rotate(360deg);}}
+
+/* Orbiting dot */
+.hex-spinner::after{
+  content:'';
+  position:absolute;
+  width:10px;height:10px;
+  background:#00d4aa;
+  border-radius:50%;
+  top:50%;left:50%;
+  margin:-5px 0 0 -5px;
+  box-shadow:0 0 14px 4px rgba(0,212,170,0.7);
+  animation:orbit 1.2s linear infinite;
+}
+@keyframes orbit{
+  0%{transform:translate(38px,0) rotate(0deg);}
+  100%{transform:translate(38px,0) rotate(360deg);
+       /* trick: rotate around center using transform-origin */}
+}
+/* Better orbit */
+.orbit-wrap{
+  position:absolute;inset:0;
+  animation:orbitwrap 1.2s linear infinite;
+}
+@keyframes orbitwrap{to{transform:rotate(360deg);}}
+.orbit-dot{
+  position:absolute;
+  width:10px;height:10px;
+  background:#00d4aa;
+  border-radius:50%;
+  top:50%;left:100%;
+  margin-top:-5px;margin-left:-5px;
+  box-shadow:0 0 14px 4px rgba(0,212,170,0.6);
+}
+
+.loader-brand{
+  font-family:'Syne',sans-serif;
+  font-size:30px;font-weight:800;
+  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:-0.5px;
+}
+.loader-msg{
+  font-size:13px;color:#475569;
+  letter-spacing:1.5px;text-transform:uppercase;
+  font-weight:500;
+  animation:fadepulse 1.5s ease-in-out infinite;
+}
+@keyframes fadepulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
+
+/* Progress bar */
+.loader-progress{
+  width:220px;height:2px;
+  background:rgba(255,255,255,0.06);
+  border-radius:2px;overflow:hidden;
+}
+.loader-progress-fill{
+  height:100%;width:0%;
+  background:linear-gradient(90deg,#00d4aa,#0ea5e9);
+  border-radius:2px;
+  transition:width 0.1s linear;
+  box-shadow:0 0 8px rgba(0,212,170,0.6);
+}
+
+/* Grid overlay on loader */
+.loader-grid{
+  position:absolute;inset:0;z-index:1;
+  background-image:
+    linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px);
+  background-size:60px 60px;
+  animation:gridmove 4s linear infinite;
+}
+@keyframes gridmove{
+  0%{background-position:0 0;}
+  100%{background-position:60px 60px;}
+}
 </style>
 </head>
 <body>
 <div class="bg-animated"></div>
 <div class="grid-overlay"></div>
+
+<!-- LOGIN LOADING OVERLAY -->
+<div class="login-loader" id="login-loader">
+  <div class="loader-grid"></div>
+  <div class="loader-content">
+    <div class="hex-spinner">
+      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5"
+          stroke="rgba(0,212,170,0.15)" stroke-width="2" fill="none"/>
+        <polygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5"
+          stroke="url(#hexgrad)" stroke-width="2.5" fill="none"
+          stroke-dasharray="260" stroke-dashoffset="0"
+          style="filter:drop-shadow(0 0 6px rgba(0,212,170,0.8))"/>
+        <defs>
+          <linearGradient id="hexgrad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#00d4aa"/>
+            <stop offset="50%" stop-color="#0ea5e9"/>
+            <stop offset="100%" stop-color="transparent"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="orbit-wrap">
+        <div class="orbit-dot"></div>
+      </div>
+    </div>
+    <div>
+      <div class="loader-brand">Olimbek SAVDO</div>
+    </div>
+    <div class="loader-msg" id="loader-msg">Tekshirilmoqda...</div>
+    <div class="loader-progress">
+      <div class="loader-progress-fill" id="loader-progress-fill"></div>
+    </div>
+  </div>
+</div>
 
 <!-- LEFT BRANDING -->
 <div class="left-panel">
@@ -613,6 +751,41 @@ async function loadStats(){
 }
 loadStats();
 setInterval(loadStats, 30000);
+
+// ===== LOGIN LOADING ANIMATION =====
+const loaderMsgs = [
+  'Tekshirilmoqda...',
+  'Ulanilmoqda...',
+  'Panel yuklanmoqda...',
+  'Xush kelibsiz!'
+];
+
+document.querySelector('form').addEventListener('submit', function(e){
+  const uname = this.querySelector('[name=username]').value.trim();
+  const pass = this.querySelector('[name=password]').value.trim();
+  if(!uname || !pass) return; // html validation handles it
+
+  const loader = document.getElementById('login-loader');
+  const msgEl = document.getElementById('loader-msg');
+  const fill = document.getElementById('loader-progress-fill');
+
+  loader.classList.add('show');
+
+  // Animate progress + messages
+  const steps = [
+    {pct: 20,  msg: 'Tekshirilmoqda...',     delay: 0},
+    {pct: 50,  msg: 'Ulanilmoqda...',         delay: 400},
+    {pct: 80,  msg: 'Panel yuklanmoqda...',   delay: 850},
+    {pct: 100, msg: 'Xush kelibsiz! ✓',       delay: 1300},
+  ];
+
+  steps.forEach(s => {
+    setTimeout(() => {
+      fill.style.width = s.pct + '%';
+      msgEl.textContent = s.msg;
+    }, s.delay);
+  });
+});
 </script>
 </body>
 </html>'''
@@ -969,9 +1142,116 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
   @media(max-width:400px){
     .stats-grid{grid-template-columns:1fr;}
   }
+
+  /* ===== LOGOUT LOADING OVERLAY ===== */
+  .logout-loader{
+    position:fixed;inset:0;z-index:9999;
+    display:none;
+    align-items:center;justify-content:center;
+    flex-direction:column;
+    background:rgba(8,12,24,0.0);
+    transition:background 0.4s ease;
+  }
+  .logout-loader.show{
+    display:flex;
+    animation:logoutfadein 0.35s ease forwards;
+  }
+  @keyframes logoutfadein{
+    0%{background:rgba(8,12,24,0);}
+    100%{background:rgba(8,12,24,0.96);}
+  }
+
+  .logout-loader-grid{
+    position:absolute;inset:0;
+    background-image:
+      linear-gradient(rgba(239,68,68,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(239,68,68,0.03) 1px, transparent 1px);
+    background-size:60px 60px;
+    animation:gridmove2 3s linear infinite;
+  }
+  @keyframes gridmove2{
+    0%{background-position:0 0;}
+    100%{background-position:60px 60px;}
+  }
+
+  .logout-loader-content{
+    position:relative;z-index:2;
+    display:flex;flex-direction:column;align-items:center;gap:24px;
+  }
+
+  /* Door animation */
+  .logout-door{
+    width:70px;height:70px;
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .logout-door-ring{
+    width:70px;height:70px;
+    border:2px solid rgba(239,68,68,0.2);
+    border-top-color:#ef4444;
+    border-radius:50%;
+    animation:logoutspin 1s linear infinite;
+    position:absolute;
+  }
+  .logout-door-ring2{
+    width:54px;height:54px;
+    border:2px solid rgba(239,68,68,0.1);
+    border-bottom-color:rgba(239,68,68,0.5);
+    border-radius:50%;
+    animation:logoutspin 1.6s linear infinite reverse;
+    position:absolute;
+  }
+  @keyframes logoutspin{to{transform:rotate(360deg);}}
+  .logout-door-icon{
+    font-size:26px;
+    animation:logoutpulse 1s ease-in-out infinite;
+  }
+  @keyframes logoutpulse{
+    0%,100%{transform:scale(1);opacity:1;}
+    50%{transform:scale(0.88);opacity:0.7;}
+  }
+
+  .logout-brand{
+    font-family:'Syne',sans-serif;
+    font-size:22px;font-weight:800;
+    color:#e2e8f0;opacity:0.7;
+  }
+  .logout-msg{
+    font-size:12px;color:#ef4444;
+    letter-spacing:2px;text-transform:uppercase;
+    animation:fadepulse2 1.2s ease-in-out infinite;
+  }
+  @keyframes fadepulse2{0%,100%{opacity:0.4;}50%{opacity:1;}}
+
+  /* Scan line effect */
+  .logout-scanline{
+    width:220px;height:1px;
+    background:linear-gradient(90deg,transparent,#ef4444,transparent);
+    animation:scanmove 1.5s ease-in-out infinite;
+  }
+  @keyframes scanmove{
+    0%{transform:translateX(-100px);opacity:0;}
+    50%{opacity:1;}
+    100%{transform:translateX(100px);opacity:0;}
+  }
 </style>
 </head>
 <body>
+
+<!-- LOGOUT LOADING OVERLAY -->
+<div class="logout-loader" id="logout-loader">
+  <div class="logout-loader-grid"></div>
+  <div class="logout-loader-content">
+    <div class="logout-door">
+      <div class="logout-door-ring"></div>
+      <div class="logout-door-ring2"></div>
+      <div class="logout-door-icon">🚪</div>
+    </div>
+    <div class="logout-brand">Olimbek SAVDO</div>
+    <div class="logout-msg" id="logout-msg">Chiqilmoqda...</div>
+    <div class="logout-scanline"></div>
+  </div>
+</div>
 
 <!-- SIDEBAR OVERLAY (mobile) -->
 <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
@@ -1060,7 +1340,7 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     </div>
     <div class="topbar-right">
       <div class="live-badge"><div class="live-dot"></div> JONLI</div>
-      <a href="/admin/logout" class="logout-btn">🚪 Chiqish</a>
+      <a href="#" class="logout-btn" onclick="doLogout(event)">🚪 Chiqish</a>
     </div>
   </div>
 
@@ -1894,6 +2174,26 @@ setInterval(()=>{
   if(document.getElementById('sec-monitoring').classList.contains('active')) loadMonitoring();
   api('/admin/api/dashboard').then(d=>{ if(d&&!d.error) document.getElementById('pending-badge').textContent=d.pending||0; });
 }, 30000);
+
+// ===== LOGOUT ANIMATION =====
+function doLogout(e){
+  e.preventDefault();
+  const loader = document.getElementById('logout-loader');
+  const msgEl = document.getElementById('logout-msg');
+
+  loader.classList.add('show');
+
+  const msgs = ['Chiqilmoqda...', 'Sessiya yopilmoqda...', 'Xayir! 👋'];
+  let i = 0;
+  const iv = setInterval(()=>{
+    i++;
+    if(i < msgs.length) msgEl.textContent = msgs[i];
+    else {
+      clearInterval(iv);
+      window.location.href = '/admin/logout';
+    }
+  }, 500);
+}
 
 // INITIAL LOAD
 loadDashboard();

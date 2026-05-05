@@ -597,7 +597,7 @@ function togglePass(){
   } else {
     inp.type = 'password';
     btn.textContent = '👁️';
-    btn.title = 'Parolni ko\'rish';
+    btn.title = "Parolni ko'rish";
   }
 }
 
@@ -1678,8 +1678,24 @@ def admin_login():
             session['admin_logged_in'] = True
             session['admin_username'] = username
             return redirect('/admin')
-        error = "Noto'g'ri username yoki parol!"
+        error = "Noto\u02bbg\u02bbri username yoki parol!"
     return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/admin/api/login-stats')
+def api_login_stats():
+    """Login sahifasidagi floating card uchun — autentifikatsiya talab qilinmaydi"""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        today = datetime.now().strftime("%d.%m.%Y")
+        c.execute("SELECT COUNT(*) as cnt FROM orders WHERE created_at LIKE %s", (f"{today}%",))
+        orders = c.fetchone()['cnt']
+        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
+        income = c.fetchone()['t']
+        conn.close()
+        return jsonify({'orders': orders, 'income': float(income)})
+    except Exception as e:
+        return jsonify({'orders': 0, 'income': 0})
 
 @app.route('/admin/logout')
 def admin_logout():

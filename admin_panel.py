@@ -3065,6 +3065,73 @@ def api_ai_chat():
             c = conn.cursor()
             today = datetime.now().strftime("%d.%m.%Y")
 
+            # --- Xabardan ID/telefon raqamlarini aniqlash ---
+            import re as _re
+            numbers = _re.findall(r'\b\d{5,}\b', user_msg)
+
+            # Mijoz ID yoki tg_id bo'yicha qidirish
+            for num in numbers:
+                num_int = int(num)
+                # User qidirish
+                c.execute("""SELECT u.*, COUNT(o.id) as order_count,
+                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
+                             FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
+                             WHERE u.tg_id=%s OR u.id=%s
+                             GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked""",
+                           (num_int, num_int))
+                user = c.fetchone()
+                if user:
+                    ctx_lines.append(f"=== MIJOZ #{num} ===")
+                    ctx_lines.append(f"  Ism: {user['full_name'] or 'Nomsiz'}")
+                    ctx_lines.append(f"  Telefon: {user['phone'] or 'Yo`q'}")
+                    ctx_lines.append(f"  Username: @{user['username'] or 'yo`q'}")
+                    ctx_lines.append(f"  TG ID: {user['tg_id']}")
+                    ctx_lines.append(f"  Ro'yxatdan: {user['registered_at']}")
+                    ctx_lines.append(f"  Bloklangan: {'Ha' if user['is_blocked'] else 'Yo`q'}")
+                    ctx_lines.append(f"  Jami buyurtmalar: {user['order_count']}")
+                    ctx_lines.append(f"  Jami sarflagan: {float(user['total_spent']):,.0f} so'm")
+
+                    # Shu mijozning so'nggi buyurtmalari
+                    c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at, o.address
+                                 FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
+                                 WHERE o.user_tg_id=%s ORDER BY o.id DESC LIMIT 5""", (user['tg_id'],))
+                    uorders = c.fetchall()
+                    if uorders:
+                        ctx_lines.append(f"  So'nggi buyurtmalari:")
+                        for uo in uorders:
+                            ctx_lines.append(f"    #{uo['id']} | {uo['shop']} | {float(uo['total_sum']):,.0f} so'm | {uo['status']} | {uo['created_at']}")
+
+                # Order ID bo'yicha qidirish
+                c.execute("""SELECT o.*, s.name as shop_name, u.full_name, u.phone, u.tg_id as u_tg_id
+                             FROM orders o
+                             LEFT JOIN shops s ON o.shop_id=s.id
+                             LEFT JOIN users u ON u.tg_id=o.user_tg_id
+                             WHERE o.id=%s""", (num_int,))
+                order = c.fetchone()
+                if order and not user:
+                    ctx_lines.append(f"=== BUYURTMA #{num} ===")
+                    ctx_lines.append(f"  Do'kon: {order['shop_name']}")
+                    ctx_lines.append(f"  Mijoz: {order['full_name'] or 'Nomsiz'} ({order['phone']})")
+                    ctx_lines.append(f"  Summa: {float(order['total_sum']):,.0f} so'm")
+                    ctx_lines.append(f"  Holat: {order['status']}")
+                    ctx_lines.append(f"  Manzil: {order['address']}")
+                    ctx_lines.append(f"  Vaqt: {order['created_at']}")
+
+            # Telefon raqam bo'yicha qidirish
+            phones = _re.findall(r'\b(?:\+998|998|0)?\d{9}\b', user_msg)
+            for phone in phones:
+                c.execute("""SELECT u.*, COUNT(o.id) as order_count,
+                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
+                             FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
+                             WHERE u.phone LIKE %s
+                             GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked""",
+                           (f"%{phone}%",))
+                pu = c.fetchone()
+                if pu:
+                    ctx_lines.append(f"=== TELEFON {phone} BO'YICHA MIJOZ ===")
+                    ctx_lines.append(f"  Ism: {pu['full_name']}, TG: {pu['tg_id']}, Buyurtmalar: {pu['order_count']}")
+
+            # --- Umumiy statistika ---
             c.execute("SELECT COUNT(*) as n FROM users")
             ctx_lines.append(f"Jami mijozlar: {c.fetchone()['n']}")
 

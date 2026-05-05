@@ -1190,14 +1190,12 @@ function showSection(name){
 
 // STATUS BADGE
 function statusBadge(s){
-  const m = {
-    'pending':'<span class="badge badge-yellow">⏳ Kutilmoqda</span>',
-    'confirmed':'<span class="badge badge-blue">✅ Tasdiqlandi</span>',
-    'on_way':'<span class="badge badge-blue">🚗 Yo\'lda</span>',
-    'delivered':'<span class="badge badge-green">✅ Yetkazildi</span>',
-    'rejected':'<span class="badge badge-red">❌ Rad etildi</span>'
-  };
-  return m[s]||`<span class="badge badge-gray">${s}</span>`;
+  if(s==="pending") return "<span class='badge badge-yellow'>⏳ Kutilmoqda</span>";
+  if(s==="confirmed") return "<span class='badge badge-blue'>✅ Tasdiqlandi</span>";
+  if(s==="on_way") return "<span class='badge badge-blue'>🚗 Yo\u2019lda</span>";
+  if(s==="delivered") return "<span class='badge badge-green'>✅ Yetkazildi</span>";
+  if(s==="rejected") return "<span class='badge badge-red'>❌ Rad etildi</span>";
+  return `<span class="badge badge-gray">${s}</span>`;
 }
 function fmtNum(n){return Number(n||0).toLocaleString('uz-UZ');}
 
@@ -1211,8 +1209,8 @@ async function loadDashboard(){
   document.getElementById('s-shops-open').textContent = (d.shops_open??'—')+' ta ochiq';
   document.getElementById('s-couriers').textContent = d.couriers??'—';
   document.getElementById('s-orders').textContent = d.total_orders??'—';
-  document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so\'m';
-  document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so\'m';
+  document.getElementById('s-income').textContent = fmtNum(d.total_income)+' so’m';
+  document.getElementById('s-today').textContent = fmtNum(d.today_income)+' so’m';
   document.getElementById('s-pending').textContent = d.pending??'—';
   document.getElementById('s-onway').textContent = d.on_way??'—';
   document.getElementById('pending-badge').textContent = d.pending??0;
@@ -1221,7 +1219,7 @@ async function loadDashboard(){
   ro.innerHTML = (d.recent_orders||[]).map(o=>`<tr>
     <td><code>#${o.order_uid}</code></td>
     <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${o.shop_name||'—'}</td>
-    <td>${fmtNum(o.total_sum)} so'm</td>
+    <td>${fmtNum(o.total_sum)} so’m</td>
     <td>${statusBadge(o.status)}</td>
     <td style="font-size:11px;color:var(--text2);">${o.created_at}</td>
   </tr>`).join('');
@@ -1241,10 +1239,10 @@ async function loadMonitoring(){
   const mc = document.getElementById('monitor-cards');
   mc.innerHTML = `
     <div class="monitor-card"><div class="monitor-num" style="color:#f59e0b;">${d.pending}</div><div class="monitor-lbl">⏳ Kutilmoqda</div></div>
-    <div class="monitor-card"><div class="monitor-num" style="color:#0ea5e9;">${d.on_way}</div><div class="monitor-lbl">🚗 Yo'lda</div></div>
-    <div class="monitor-card"><div class="monitor-num" style="color:#22c55e;">${d.free_couriers}</div><div class="monitor-lbl">🟢 Bo'sh kuryer</div></div>
+    <div class="monitor-card"><div class="monitor-num" style="color:#0ea5e9;">${d.on_way}</div><div class="monitor-lbl">🚗 Yo’lda</div></div>
+    <div class="monitor-card"><div class="monitor-num" style="color:#22c55e;">${d.free_couriers}</div><div class="monitor-lbl">🟢 Bo’sh kuryer</div></div>
     <div class="monitor-card"><div class="monitor-num" style="color:#ef4444;">${d.busy_couriers}</div><div class="monitor-lbl">🔴 Band kuryer</div></div>
-    <div class="monitor-card"><div class="monitor-num" style="color:#00d4aa;">${d.open_shops}</div><div class="monitor-lbl">🏪 Ochiq do'kon</div></div>
+    <div class="monitor-card"><div class="monitor-num" style="color:#00d4aa;">${d.open_shops}</div><div class="monitor-lbl">🏪 Ochiq do’kon</div></div>
     <div class="monitor-card"><div class="monitor-num" style="color:#8b5cf6;">${d.last_hour}</div><div class="monitor-lbl">🕐 Oxirgi 1 soat</div></div>
   `;
   const pol = document.getElementById('pending-orders-list');
@@ -1253,18 +1251,18 @@ async function loadMonitoring(){
     return `<tr>
       <td><code>#${o.order_uid}</code></td>
       <td>${o.shop_name||'—'}</td>
-      <td>${fmtNum(o.total_sum)} so'm</td>
+      <td>${fmtNum(o.total_sum)} so’m</td>
       <td>${o.wait_min} daq${warn}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="5" class="empty-state">✅ Muammo yo\'q</td></tr>';
+  }).join('') || "<tr><td colspan='5' class='empty-state'>✅ Muammo yo’q</td></tr>";
 
   const fcl = document.getElementById('free-couriers-list');
   fcl.innerHTML = (d.free_couriers_list||[]).map(c=>`<tr>
     <td>${c.full_name}</td>
     <td>${c.phone}</td>
     <td>${c.shop_name||'—'}</td>
-  </tr>`).join('') || '<tr><td colspan="3" class="empty-state">Bo\'sh kuryer yo\'q</td></tr>';
+  </tr>`).join('') || "<tr><td colspan='3' class='empty-state'>Bo’sh kuryer yo’q</td></tr>";
 }
 
 // ===== ORDERS =====
@@ -1279,13 +1277,13 @@ async function loadOrders(){
     <td>${o.user_name||'Tel buyurtma'}<br><small style="color:var(--text2);">${o.user_phone||''}</small></td>
     <td>${o.shop_name||'—'}</td>
     <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.products}">${o.products}</td>
-    <td style="white-space:nowrap;">${fmtNum(o.total_sum)} so'm</td>
+    <td style="white-space:nowrap;">${fmtNum(o.total_sum)} so’m</td>
     <td>${o.payment_type}</td>
     <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${o.address}">${o.address}</td>
     <td>${statusBadge(o.status)}</td>
     <td>${o.courier_name||'—'}</td>
     <td style="font-size:11px;white-space:nowrap;">${o.created_at}</td>
-  </tr>`).join('') || '<tr><td colspan="10" class="empty-state">Buyurtma yo\'q</td></tr>';
+  </tr>`).join('') || "<tr><td colspan='10' class='empty-state'>Buyurtma yo’q</td></tr>";
 }
 
 // ===== USERS =====
@@ -1300,7 +1298,7 @@ async function loadUsers(){
     <td>${u.phone}</td>
     <td>${u.username?'@'+u.username:'—'}</td>
     <td>${u.order_count}</td>
-    <td>${fmtNum(u.total_spent)} so'm</td>
+    <td>${fmtNum(u.total_spent)} so’m</td>
     <td style="font-size:11px;">${u.registered_at}</td>
     <td>${u.is_blocked?'<span class="badge badge-red">🚫 Bloklangan</span>':'<span class="badge badge-green">✅ Faol</span>'}</td>
     <td>
@@ -1331,7 +1329,7 @@ async function loadCouriers(){
     <td>${c.tg_id}</td>
     <td>${c.shop_name||'—'}</td>
     <td>${c.delivered_count}</td>
-    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':'<span class="badge badge-green">🟢 Bo\'sh</span>'}</td>
+    <td>${c.is_busy?'<span class="badge badge-yellow">🔴 Band</span>':"<span class='badge badge-green'>🟢 Bo’sh</span>"}</td>
     <td>${c.is_blocked?'<span class="badge badge-red">🚫</span>':'<span class="badge badge-green">✅</span>'}</td>
     <td>
       ${c.is_blocked
@@ -1349,7 +1347,7 @@ async function toggleCourier(tg_id, block){
   loadCouriers();
 }
 async function deleteCourier(tg_id){
-  if(!confirm("O'chirishni tasdiqlaysizmi?")) return;
+  if(!confirm("O’chirishni tasdiqlaysizmi?")) return;
   await api('/admin/api/courier/delete', {method:'POST',body:JSON.stringify({tg_id})});
   loadCouriers();
 }
@@ -1366,7 +1364,7 @@ async function loadShops(){
     <td>${s.phone||'—'}</td>
     <td>⭐${Number(s.rating||0).toFixed(1)}</td>
     <td>${s.order_count}</td>
-    <td>${fmtNum(s.total_income)} so'm</td>
+    <td>${fmtNum(s.total_income)} so’m</td>
     <td>${s.admin_percent}%</td>
     <td>${s.is_open?'<span class="badge badge-green">🟢 Ochiq</span>':'<span class="badge badge-red">🔴 Yopiq</span>'}</td>
   </tr>`).join('');
@@ -1375,17 +1373,17 @@ async function loadShops(){
 // ===== FINANCE =====
 async function loadFinance(){
   const d = await api('/admin/api/finance');
-  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+' so\'m';
-  document.getElementById('f-card').textContent = fmtNum(d.card_total)+' so\'m';
-  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+' so\'m';
-  document.getElementById('f-total').textContent = fmtNum(d.total)+' so\'m';
+  document.getElementById('f-cash').textContent = fmtNum(d.cash_total)+' so’m';
+  document.getElementById('f-card').textContent = fmtNum(d.card_total)+' so’m';
+  document.getElementById('f-admin').textContent = fmtNum(d.admin_share)+' so’m';
+  document.getElementById('f-total').textContent = fmtNum(d.total)+' so’m';
   const t = document.getElementById('finance-table');
   t.innerHTML = (d.shops||[]).map(s=>`<tr>
     <td>${s.name}</td>
     <td>${s.order_count}</td>
-    <td>${fmtNum(s.total_income)} so'm</td>
+    <td>${fmtNum(s.total_income)} so’m</td>
     <td>${s.admin_percent}%</td>
-    <td>${fmtNum(s.total_income*s.admin_percent/100)} so'm</td>
+    <td>${fmtNum(s.total_income*s.admin_percent/100)} so’m</td>
   </tr>`).join('');
 }
 
@@ -1395,12 +1393,12 @@ async function loadPromo(){
   const t = document.getElementById('promo-table');
   t.innerHTML = (d.promos||[]).map(p=>{
     const active = (p.max_uses===0||p.used_count<p.max_uses)&&(!p.expires_at||new Date(p.expires_at)>=new Date());
-    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+' so\'m';
+    const valText = p.discount_type==='percent'?p.discount_value+'%':fmtNum(p.discount_value)+' so’m';
     return `<tr>
       <td><code>${p.code}</code></td>
       <td>${valText}</td>
       <td>${p.discount_type==='percent'?'Foiz':'Belgilangan'}</td>
-      <td>${fmtNum(p.min_sum)} so'm</td>
+      <td>${fmtNum(p.min_sum)} so’m</td>
       <td>${p.expires_at||'Cheksiz'}</td>
       <td>${p.max_uses||'Cheksiz'}</td>
       <td>${p.used_count}</td>
@@ -1425,7 +1423,7 @@ async function createPromo(){
 }
 
 async function deletePromo(id){
-  if(!confirm("O'chirishni tasdiqlaysizmi?")) return;
+  if(!confirm("O’chirishni tasdiqlaysizmi?")) return;
   await api('/admin/api/promo/delete', {method:'POST',body:JSON.stringify({id})});
   loadPromo();
 }
@@ -1446,20 +1444,20 @@ async function doSearch(){
   }
   if(d.couriers&&d.couriers.length){
     html += `<div class="card"><div class="card-header"><h3>🚚 Kuryerlar (${d.couriers.length})</h3></div>
-    <div class="scrollable-table"><table><thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>TG ID</th><th>Do'kon</th></tr></thead><tbody>
+    <div class="scrollable-table"><table><thead><tr><th>ID</th><th>Ism</th><th>Telefon</th><th>TG ID</th><th>Do’kon</th></tr></thead><tbody>
     ${d.couriers.map(c=>`<tr><td>${c.id}</td><td>${c.full_name}</td><td>${c.phone}</td><td>${c.tg_id}</td><td>${c.shop_name||'—'}</td></tr>`).join('')}
     </tbody></table></div></div>`;
   }
   if(d.shops&&d.shops.length){
-    html += `<div class="card"><div class="card-header"><h3>🏪 Do'konlar (${d.shops.length})</h3></div>
+    html += `<div class="card"><div class="card-header"><h3>🏪 Do’konlar (${d.shops.length})</h3></div>
     <div class="scrollable-table"><table><thead><tr><th>ID</th><th>Nom</th><th>Telefon</th></tr></thead><tbody>
     ${d.shops.map(s=>`<tr><td>${s.id}</td><td>${s.name}</td><td>${s.phone||'—'}</td></tr>`).join('')}
     </tbody></table></div></div>`;
   }
   if(d.orders&&d.orders.length){
     html += `<div class="card"><div class="card-header"><h3>📦 Buyurtmalar (${d.orders.length})</h3></div>
-    <div class="scrollable-table"><table><thead><tr><th>ID</th><th>Do'kon</th><th>Summa</th><th>Holat</th><th>Vaqt</th></tr></thead><tbody>
-    ${d.orders.map(o=>`<tr><td>#${o.order_uid}</td><td>${o.shop_name||'—'}</td><td>${fmtNum(o.total_sum)} so'm</td><td>${statusBadge(o.status)}</td><td>${o.created_at}</td></tr>`).join('')}
+    <div class="scrollable-table"><table><thead><tr><th>ID</th><th>Do’kon</th><th>Summa</th><th>Holat</th><th>Vaqt</th></tr></thead><tbody>
+    ${d.orders.map(o=>`<tr><td>#${o.order_uid}</td><td>${o.shop_name||'—'}</td><td>${fmtNum(o.total_sum)} so’m</td><td>${statusBadge(o.status)}</td><td>${o.created_at}</td></tr>`).join('')}
     </tbody></table></div></div>`;
   }
   if(!html) html = '<div class="card"><div class="empty-state"><div class="empty-icon">🔍</div><p>Hech narsa topilmadi</p></div></div>';
@@ -1481,7 +1479,7 @@ async function loadChats(){
       <div style="font-size:11px;color:var(--text2);margin-top:2px;">${c.last_msg||''}</div>
       <div style="font-size:10px;color:var(--text2);margin-top:2px;">${c.last_time||''}</div>
     </div>
-  `).join('') || '<div class="empty-state"><p>Chat yo\'q</p></div>';
+  `).join('') || '<div class="empty-state"><p>Chat yo’q</p></div>';
 }
 
 async function loadChatDetail(from_id, to_id){
@@ -1492,7 +1490,7 @@ async function loadChatDetail(from_id, to_id){
       <div class="chat-meta">${m.from_tg_id} • ${m.created_at}</div>
       <div>${m.message}</div>
     </div>
-  `).join('') || '<div class="empty-state"><p>Xabar yo\'q</p></div>';
+  `).join('') || '<div class="empty-state"><p>Xabar yo’q</p></div>';
   detail.scrollTop = detail.scrollHeight;
 }
 
@@ -1506,12 +1504,12 @@ async function loadProblems(){
       <td><code>#${o.order_uid}</code></td>
       <td>${o.shop_name||'—'}</td>
       <td>${o.user_name||'Tel buyurtma'}</td>
-      <td>${fmtNum(o.total_sum)} so'm</td>
+      <td>${fmtNum(o.total_sum)} so’m</td>
       <td>${o.wait_min} daqiqa${warn}</td>
       <td style="font-size:11px;">${o.created_at}</td>
       <td>${statusBadge(o.status)}</td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" class="empty-state">✅ Muammo yo\'q</td></tr>';
+  }).join('') || '<tr><td colspan="7" class="empty-state">✅ Muammo yo’q</td></tr>';
 }
 
 // ===== BLOCKED =====
@@ -1521,13 +1519,13 @@ async function loadBlocked(){
   bu.innerHTML = (d.users||[]).map(u=>`<tr>
     <td>${u.full_name}</td><td>${u.phone}</td><td>${u.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleUser(${u.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
+  </tr>`).join('') || "<tr><td colspan='4' class='empty-state'>Yo’q</td></tr>";
 
   const bc = document.getElementById('blocked-couriers-table');
   bc.innerHTML = (d.couriers||[]).map(c=>`<tr>
     <td>${c.full_name}</td><td>${c.phone}</td><td>${c.id}</td>
     <td><button class="btn btn-success btn-sm" onclick="toggleCourier(${c.tg_id},0)">✅ Ochish</button></td>
-  </tr>`).join('') || '<tr><td colspan="4" class="empty-state">Yo\'q</td></tr>';
+  </tr>`).join('') || "<tr><td colspan='4' class='empty-state'>Yo’q</td></tr>";
 }
 
 // ===== TOP =====
@@ -1537,10 +1535,10 @@ async function loadTop(){
   const medals = ['🥇','🥈','🥉'];
   t.innerHTML = (d.users||[]).map((u,i)=>`<tr>
     <td>${medals[i]||i+1}</td>
-    <td>${u.full_name||'Noma\'lum'}</td>
+    <td>${u.full_name||'Noma’lum'}</td>
     <td>${u.phone||'—'}</td>
     <td>${u.order_count}</td>
-    <td>${fmtNum(u.total_spent)} so'm</td>
+    <td>${fmtNum(u.total_spent)} so’m</td>
   </tr>`).join('');
 }
 
@@ -1554,7 +1552,7 @@ async function loadWeekly(){
       <div class="stat-label">Haftalik buyurtmalar</div>
     </div>
     <div class="stat-card" style="--c1:#22c55e;--c2:#00d4aa;">
-      <div class="stat-icon">💰</div><div class="stat-value">${fmtNum(d.total_income)} so'm</div>
+      <div class="stat-icon">💰</div><div class="stat-value">${fmtNum(d.total_income)} so’m</div>
       <div class="stat-label">Haftalik daromad</div>
     </div>
     <div class="stat-card" style="--c1:#8b5cf6;--c2:#ec4899;">
@@ -1566,7 +1564,7 @@ async function loadWeekly(){
   t.innerHTML = (d.days||[]).map(day=>`<tr>
     <td>${day.date}</td>
     <td>${day.orders}</td>
-    <td>${fmtNum(day.income)} so'm</td>
+    <td>${fmtNum(day.income)} so’m</td>
     <td>${day.new_users}</td>
   </tr>`).join('');
 }
@@ -1580,7 +1578,7 @@ async function loadAdminOrders(){
     <td>${o.shop_name||'—'}</td>
     <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;">${o.address}</td>
     <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;">${o.products}</td>
-    <td>${fmtNum(o.total_sum)} so'm</td>
+    <td>${fmtNum(o.total_sum)} so’m</td>
     <td>${statusBadge(o.status)}</td>
     <td style="font-size:11px;">${o.created_at}</td>
   </tr>`).join('');

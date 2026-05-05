@@ -425,12 +425,18 @@ body{
   position:absolute;left:14px;top:50%;transform:translateY(-50%);
   font-size:16px;pointer-events:none;
 }
+.field-icon-right{
+  position:absolute;right:14px;top:50%;transform:translateY(-50%);
+  font-size:16px;cursor:pointer;user-select:none;
+  opacity:0.6;transition:opacity 0.2s;
+}
+.field-icon-right:hover{opacity:1;}
 .field input{
   width:100%;
   background:rgba(255,255,255,0.05);
   border:1px solid rgba(255,255,255,0.1);
   border-radius:12px;
-  padding:14px 14px 14px 44px;
+  padding:14px 44px 14px 44px;
   color:#e2e8f0;font-size:14px;
   outline:none;
   font-family:'DM Sans',sans-serif;
@@ -566,7 +572,8 @@ body{
         <label>Parol</label>
         <div class="field-wrap">
           <span class="field-icon">🔒</span>
-          <input type="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+          <input type="password" name="password" id="pass-input" placeholder="••••••••" required autocomplete="current-password">
+          <span class="field-icon-right" id="pass-toggle" onclick="togglePass()" title="Parolni ko'rish">👁️</span>
         </div>
       </div>
       <button type="submit" class="submit-btn">🔐 Kirish</button>
@@ -578,6 +585,35 @@ body{
   </div>
 </div>
 
+<script>
+// Parolni ko'rish/yashirish
+function togglePass(){
+  var inp = document.getElementById('pass-input');
+  var btn = document.getElementById('pass-toggle');
+  if(inp.type === 'password'){
+    inp.type = 'text';
+    btn.textContent = '🙈';
+    btn.title = 'Parolni yashirish';
+  } else {
+    inp.type = 'password';
+    btn.textContent = '👁️';
+    btn.title = 'Parolni ko\'rish';
+  }
+}
+
+// Jonli statistika
+async function loadStats(){
+  try {
+    const r = await fetch('/admin/api/login-stats');
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.orders !== undefined) document.getElementById('fc-orders').textContent = d.orders + ' ta';
+    if(d.income !== undefined) document.getElementById('fc-income').textContent = Number(d.income).toLocaleString('uz-UZ') + ' so\u2019m';
+  } catch(e) {}
+}
+loadStats();
+setInterval(loadStats, 30000);
+</script>
 </body>
 </html>'''
 

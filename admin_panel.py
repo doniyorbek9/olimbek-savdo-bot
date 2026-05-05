@@ -1489,16 +1489,16 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 
           <!-- Tezkor amallar -->
           <div class="qw-actions">
-            <button class="qw-btn" onclick="showSection('sec-monitoring')">👁️ Monitoring</button>
-            <button class="qw-btn" onclick="showSection('sec-orders')">📦 Buyurtmalar</button>
-            <button class="qw-btn" onclick="showSection('sec-users')">👥 Mijozlar</button>
-            <button class="qw-btn" onclick="showSection('sec-couriers')">🚚 Kuryerlar</button>
-            <button class="qw-btn" onclick="showSection('sec-shops')">🏪 Do'konlar</button>
-            <button class="qw-btn" onclick="showSection('sec-finance')">💰 Moliya</button>
-            <button class="qw-btn" onclick="showSection('sec-problems')">⚠️ Muammolar</button>
-            <button class="qw-btn" onclick="showSection('sec-blocked')">🚫 Bloklangan</button>
-            <button class="qw-btn" onclick="showSection('sec-top')">🏆 Top mijozlar</button>
-            <button class="qw-btn green" onclick="showSection('sec-report')">📊 Hisobot</button>
+            <button class="qw-btn" onclick="showSection('monitoring')">👁️ Monitoring</button>
+            <button class="qw-btn" onclick="showSection('orders')">📦 Buyurtmalar</button>
+            <button class="qw-btn" onclick="showSection('users')">👥 Mijozlar</button>
+            <button class="qw-btn" onclick="showSection('couriers')">🚚 Kuryerlar</button>
+            <button class="qw-btn" onclick="showSection('shops')">🏪 Do'konlar</button>
+            <button class="qw-btn" onclick="showSection('finance')">💰 Moliya</button>
+            <button class="qw-btn" onclick="showSection('problems')">⚠️ Muammolar</button>
+            <button class="qw-btn" onclick="showSection('blocked')">🚫 Bloklangan</button>
+            <button class="qw-btn" onclick="showSection('top')">🏆 Top mijozlar</button>
+            <button class="qw-btn green" onclick="showSection('weekly')">📊 Hisobot</button>
           </div>
         </div>
       </div>
@@ -2363,9 +2363,9 @@ async function loadQuickWidget(){
 }
 
 function fmtMoney(n){
-  if(n >= 1000000) return (n/1000000).toFixed(1) + ' mln so'm';
-  if(n >= 1000) return (n/1000).toFixed(0) + ' ming so'm';
-  return n.toLocaleString() + ' so'm';
+  if(n >= 1000000) return (n/1000000).toFixed(1) + ' mln som';
+  if(n >= 1000) return (n/1000).toFixed(0) + ' ming som';
+  return n.toLocaleString() + ' som';
 }
 function fmtShort(n){
   if(n >= 1000000) return (n/1000000).toFixed(1) + ' mln';

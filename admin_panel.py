@@ -1143,9 +1143,9 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     .stats-grid{grid-template-columns:1fr;}
   }
 
-  /* ===== AI CHAT WIDGET ===== */
-  .ai-chat-wrap{
-    background:rgba(17,24,39,0.85);
+  /* ===== QUICK STATS WIDGET ===== */
+  .qwidget{
+    background:rgba(17,24,39,0.9);
     backdrop-filter:blur(16px);
     border:1px solid rgba(0,212,170,0.2);
     border-radius:18px;
@@ -1154,116 +1154,50 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     box-shadow:0 0 40px rgba(0,212,170,0.06);
     position:relative;
   }
-  .ai-chat-wrap::before{
+  .qwidget::before{
     content:'';position:absolute;top:0;left:0;right:0;height:2px;
     background:linear-gradient(90deg,#00d4aa,#0ea5e9,#8b5cf6);
   }
-  .ai-chat-header{
+  .qwidget-header{
     padding:14px 20px;
     display:flex;align-items:center;justify-content:space-between;
     border-bottom:1px solid rgba(255,255,255,0.06);
-    cursor:pointer;
-    user-select:none;
   }
-  .ai-chat-header-left{display:flex;align-items:center;gap:12px;}
-  .ai-avatar{
-    width:36px;height:36px;
-    background:linear-gradient(135deg,#00d4aa,#0ea5e9);
-    border-radius:10px;
-    display:flex;align-items:center;justify-content:center;
-    font-size:18px;
-    box-shadow:0 4px 14px rgba(0,212,170,0.35);
-    flex-shrink:0;
+  .qwidget-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text);}
+  .qwidget-sub{font-size:11px;color:var(--text2);margin-top:2px;}
+  .qwidget-body{padding:16px 20px;}
+  .qw-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+  @media(max-width:900px){.qw-grid{grid-template-columns:repeat(2,1fr);}}
+  .qw-card{
+    background:var(--surface2);border:1px solid var(--border);
+    border-radius:12px;padding:14px;text-align:center;
+    transition:transform 0.15s,border-color 0.15s;cursor:default;
   }
-  .ai-header-text{}
-  .ai-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#e2e8f0;}
-  .ai-subtitle{font-size:11px;color:#475569;margin-top:1px;}
-  .ai-status{
-    display:flex;align-items:center;gap:5px;
-    font-size:11px;color:#00d4aa;
+  .qw-card:hover{transform:translateY(-2px);border-color:var(--accent);}
+  .qw-card .qw-icon{font-size:22px;margin-bottom:6px;}
+  .qw-card .qw-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--text);}
+  .qw-card .qw-lbl{font-size:10px;color:var(--text2);margin-top:3px;font-weight:500;text-transform:uppercase;letter-spacing:0.5px;}
+  .qw-card .qw-sub{font-size:10px;margin-top:4px;}
+  .qw-actions{display:flex;flex-wrap:wrap;gap:8px;}
+  .qw-btn{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:8px 14px;border-radius:10px;font-size:12px;font-weight:600;
+    cursor:pointer;border:1px solid var(--border);background:var(--surface2);
+    color:var(--text2);transition:all 0.15s;white-space:nowrap;
   }
-  .ai-status-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;animation:pulse 2s infinite;}
-  .ai-collapse-btn{
-    background:rgba(255,255,255,0.05);
-    border:1px solid rgba(255,255,255,0.1);
-    color:#64748b;width:28px;height:28px;
-    border-radius:8px;cursor:pointer;font-size:12px;
-    display:flex;align-items:center;justify-content:center;
-    transition:all 0.2s;
+  .qw-btn:hover{background:var(--accent);color:#000;border-color:var(--accent);}
+  .qw-btn.danger:hover{background:var(--danger);color:#fff;border-color:var(--danger);}
+  .qw-btn.green:hover{background:var(--green);color:#000;border-color:var(--green);}
+  .qw-live-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+  .qw-live-item{
+    display:flex;align-items:center;gap:6px;
+    background:var(--surface2);border:1px solid var(--border);
+    border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text2);
   }
-  .ai-collapse-btn:hover{color:#e2e8f0;background:rgba(0,212,170,0.1);border-color:rgba(0,212,170,0.3);}
-
-  .ai-chat-body{
-    height:320px;
-    overflow-y:auto;
-    padding:16px 20px;
-    scroll-behavior:smooth;
-    scrollbar-width:thin;
-    scrollbar-color:rgba(0,212,170,0.2) transparent;
-    display:flex;flex-direction:column;gap:10px;
-    transition:height 0.3s ease;
-  }
-  .ai-chat-body.collapsed{height:0;padding:0;overflow:hidden;}
-  .ai-chat-body::-webkit-scrollbar{width:4px;}
-  .ai-chat-body::-webkit-scrollbar-track{background:transparent;}
-  .ai-chat-body::-webkit-scrollbar-thumb{background:rgba(0,212,170,0.2);border-radius:2px;}
-
-  /* Messages */
-  .ai-msg{display:flex;gap:10px;align-items:flex-start;animation:msgin 0.25s ease;}
-  @keyframes msgin{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
-  .ai-msg.user{flex-direction:row-reverse;}
-  .ai-msg-avatar{
-    width:28px;height:28px;border-radius:8px;
-    display:flex;align-items:center;justify-content:center;
-    font-size:13px;flex-shrink:0;
-  }
-  .ai-msg-avatar.bot{background:linear-gradient(135deg,#00d4aa,#0ea5e9);}
-  .ai-msg-avatar.usr{background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.3);font-size:11px;}
-  .ai-msg-bubble{
-    max-width:78%;
-    padding:10px 14px;
-    border-radius:12px;
-    font-size:13px;line-height:1.6;
-  }
-  .ai-msg.bot .ai-msg-bubble{
-    background:rgba(0,212,170,0.07);
-    border:1px solid rgba(0,212,170,0.12);
-    color:#e2e8f0;
-    border-top-left-radius:4px;
-  }
-  .ai-msg.user .ai-msg-bubble{
-    background:rgba(139,92,246,0.12);
-    border:1px solid rgba(139,92,246,0.2);
-    color:#e2e8f0;
-    border-top-right-radius:4px;
-  }
-  .ai-msg-time{font-size:10px;color:#334155;margin-top:4px;}
-
-  /* Typing indicator */
-  .ai-typing{display:flex;gap:10px;align-items:center;}
-  .typing-dots{display:flex;gap:4px;padding:10px 14px;background:rgba(0,212,170,0.07);border:1px solid rgba(0,212,170,0.12);border-radius:12px;border-top-left-radius:4px;}
-  .typing-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;opacity:0.4;}
-  .typing-dot:nth-child(1){animation:typingbounce 1.2s 0s infinite;}
-  .typing-dot:nth-child(2){animation:typingbounce 1.2s 0.2s infinite;}
-  .typing-dot:nth-child(3){animation:typingbounce 1.2s 0.4s infinite;}
-  @keyframes typingbounce{0%,60%,100%{transform:translateY(0);opacity:0.4;}30%{transform:translateY(-6px);opacity:1;}}
-
-  /* Quick prompts */
-  .ai-quick-prompts{
-    padding:10px 20px;
-    display:flex;gap:8px;flex-wrap:wrap;
-    border-top:1px solid rgba(255,255,255,0.05);
-  }
-  .ai-quick-prompts.collapsed{display:none;}
-  .ai-qbtn{
-    background:rgba(0,212,170,0.06);
-    border:1px solid rgba(0,212,170,0.15);
-    color:#94a3b8;font-size:11px;
-    padding:5px 12px;border-radius:20px;
-    cursor:pointer;transition:all 0.15s;
-    white-space:nowrap;
-  }
-  .ai-qbtn:hover{background:rgba(0,212,170,0.12);color:#e2e8f0;border-color:rgba(0,212,170,0.3);}
+  .qw-live-item .dot{width:6px;height:6px;border-radius:50%;}
+  .dot-green{background:var(--green);animation:pulse 1.5s infinite;}
+  .dot-yellow{background:var(--accent3);}
+  .dot-red{background:var(--danger);}
 
   /* Input */
   .ai-chat-input-row{
@@ -1506,50 +1440,66 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
     <!-- ===== DASHBOARD ===== -->
     <div class="section-page active" id="sec-dashboard">
 
-      <!-- AI CHAT WIDGET -->
-      <div class="ai-chat-wrap" id="ai-chat-wrap">
-        <div class="ai-chat-header" onclick="toggleAiChat()">
-          <div class="ai-chat-header-left">
-            <div class="ai-avatar">🤖</div>
-            <div class="ai-header-text">
-              <div class="ai-title">Olimbek AI Assistant</div>
-              <div class="ai-subtitle">Statistika va ma'lumotlar bo'yicha savollar bering</div>
+      <!-- QUICK STATS & ACTIONS WIDGET -->
+      <div class="qwidget">
+        <div class="qwidget-header">
+          <div>
+            <div class="qwidget-title">⚡ Tezkor Ko'rsatkichlar</div>
+            <div class="qwidget-sub">Real vaqt ma'lumotlari — <span id="qw-update-time">—</span></div>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="loadQuickWidget()" style="font-size:11px;">🔄 Yangilash</button>
+        </div>
+        <div class="qwidget-body">
+          <!-- Live status row -->
+          <div class="qw-live-row">
+            <div class="qw-live-item"><div class="dot dot-yellow"></div> Kutilayotgan: <strong id="qw-pending">—</strong></div>
+            <div class="qw-live-item"><div class="dot dot-green"></div> Yo'lda: <strong id="qw-onway">—</strong></div>
+            <div class="qw-live-item"><div class="dot dot-green"></div> Bo'sh kuryerlar: <strong id="qw-free-c">—</strong></div>
+            <div class="qw-live-item"><div class="dot dot-red"></div> Band kuryerlar: <strong id="qw-busy-c">—</strong></div>
+            <div class="qw-live-item">🟢 Ochiq do'konlar: <strong id="qw-open-shops">—</strong></div>
+          </div>
+
+          <!-- 4 ta asosiy karta -->
+          <div class="qw-grid">
+            <div class="qw-card">
+              <div class="qw-icon">📅</div>
+              <div class="qw-val" id="qw-today-orders">—</div>
+              <div class="qw-lbl">Bugungi buyurtmalar</div>
+              <div class="qw-sub" id="qw-today-income" style="color:var(--accent);">— so'm</div>
+            </div>
+            <div class="qw-card">
+              <div class="qw-icon">✅</div>
+              <div class="qw-val" id="qw-delivered">—</div>
+              <div class="qw-lbl">Yetkazilgan (bugun)</div>
+              <div class="qw-sub" id="qw-cancel" style="color:var(--danger);">Bekor: —</div>
+            </div>
+            <div class="qw-card">
+              <div class="qw-icon">💰</div>
+              <div class="qw-val" id="qw-week-income">—</div>
+              <div class="qw-lbl">Haftalik daromad</div>
+              <div class="qw-sub" id="qw-week-orders" style="color:var(--text2);">— buyurtma</div>
+            </div>
+            <div class="qw-card">
+              <div class="qw-icon">👥</div>
+              <div class="qw-val" id="qw-new-users">—</div>
+              <div class="qw-lbl">Yangi mijozlar (7 kun)</div>
+              <div class="qw-sub" id="qw-total-users" style="color:var(--text2);">Jami: —</div>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div class="ai-status"><div class="ai-status-dot"></div> Faol</div>
-            <button class="ai-collapse-btn" id="ai-collapse-icon">▲</button>
+
+          <!-- Tezkor amallar -->
+          <div class="qw-actions">
+            <button class="qw-btn" onclick="showSection('sec-monitoring')">👁️ Monitoring</button>
+            <button class="qw-btn" onclick="showSection('sec-orders')">📦 Buyurtmalar</button>
+            <button class="qw-btn" onclick="showSection('sec-users')">👥 Mijozlar</button>
+            <button class="qw-btn" onclick="showSection('sec-couriers')">🚚 Kuryerlar</button>
+            <button class="qw-btn" onclick="showSection('sec-shops')">🏪 Do'konlar</button>
+            <button class="qw-btn" onclick="showSection('sec-finance')">💰 Moliya</button>
+            <button class="qw-btn" onclick="showSection('sec-problems')">⚠️ Muammolar</button>
+            <button class="qw-btn" onclick="showSection('sec-blocked')">🚫 Bloklangan</button>
+            <button class="qw-btn" onclick="showSection('sec-top')">🏆 Top mijozlar</button>
+            <button class="qw-btn green" onclick="showSection('sec-report')">📊 Hisobot</button>
           </div>
-        </div>
-        <div class="ai-chat-body" id="ai-chat-body">
-          <!-- Welcome message -->
-          <div class="ai-msg bot">
-            <div class="ai-msg-avatar bot">🤖</div>
-            <div>
-              <div class="ai-msg-bubble">
-                Salom! Men <strong>Olimbek SAVDO</strong> AI assistentiman. 👋<br><br>
-                Sizga quyidagi narsalarda yordam bera olaman:<br>
-                • Bugungi yoki umumiy statistika<br>
-                • Buyurtma, mijoz, do'kon ma'lumotlari<br>
-                • Tahlil va hisobotlar<br><br>
-                Qanday savol bor?
-              </div>
-              <div class="ai-msg-time" id="ai-welcome-time"></div>
-            </div>
-          </div>
-        </div>
-        <div class="ai-quick-prompts" id="ai-quick-prompts">
-          <button class="ai-qbtn" onclick="aiQuick(this)">📊 Bugungi statistika</button>
-          <button class="ai-qbtn" onclick="aiQuick(this)">💰 Jami daromad</button>
-          <button class="ai-qbtn" onclick="aiQuick(this)">📦 Oxirgi buyurtmalar</button>
-          <button class="ai-qbtn" onclick="aiQuick(this)">👥 Mijozlar soni</button>
-          <button class="ai-qbtn" onclick="aiQuick(this)">🏪 Do'konlar holati</button>
-          <button class="ai-qbtn" onclick="aiQuick(this)">🚚 Kuryerlar</button>
-        </div>
-        <div class="ai-chat-input-row" id="ai-input-row">
-          <textarea class="ai-input" id="ai-input" placeholder="Savol yozing... (Enter — yuborish)" rows="1"
-            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMsg();}"></textarea>
-          <button class="ai-send-btn" id="ai-send-btn" onclick="sendAiMsg()">➤</button>
         </div>
       </div>
 
@@ -2380,105 +2330,51 @@ setInterval(()=>{
   api('/admin/api/dashboard').then(d=>{ if(d&&!d.error) document.getElementById('pending-badge').textContent=d.pending||0; });
 }, 30000);
 
-// ===== AI CHAT =====
-(function(){
-  var t = new Date();
-  var el = document.getElementById('ai-welcome-time');
-  if(el) el.textContent = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
-})();
-
-var aiCollapsed = false;
-
-function toggleAiChat(){
-  aiCollapsed = !aiCollapsed;
-  var body = document.getElementById('ai-chat-body');
-  var quick = document.getElementById('ai-quick-prompts');
-  var inputRow = document.getElementById('ai-input-row');
-  var icon = document.getElementById('ai-collapse-icon');
-  body.classList.toggle('collapsed', aiCollapsed);
-  quick.classList.toggle('collapsed', aiCollapsed);
-  inputRow.classList.toggle('collapsed', aiCollapsed);
-  icon.textContent = aiCollapsed ? '▼' : '▲';
-}
-
-function aiQuick(btn){
-  var map = {
-    "📊 Bugungi statistika": "Bugungi statistikani korsating",
-    "💰 Jami daromad": "Jami daromad qancha?",
-    "📦 Oxirgi buyurtmalar": "Oxirgi buyurtmalarni korsating",
-    "👥 Mijozlar soni": "Nechta mijoz bor?",
-    "🏪 Do\u2019konlar holati": "Do\u2019konlar holatini korsating",
-    "🚚 Kuryerlar": "Kuryerlar haqida malumot bering"
-  };
-  var key = btn.textContent.trim();
-  document.getElementById("ai-input").value = map[key] || key;
-  sendAiMsg();
-}
-
-var aiHistory = [];
-
-async function sendAiMsg(){
-  var inp = document.getElementById('ai-input');
-  var msg = inp.value.trim();
-  if(!msg) return;
-  inp.value = '';
-
-  appendAiMsg('user', msg);
-  aiHistory.push({role:'user', content: msg});
-
-  var sendBtn = document.getElementById('ai-send-btn');
-  sendBtn.disabled = true;
-
-  // Show typing
-  var typingId = 'typing-'+Date.now();
-  var typingHtml = '<div class="ai-msg bot" id="'+typingId+'"><div class="ai-msg-avatar bot">🤖</div><div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>';
-  var body = document.getElementById('ai-chat-body');
-  body.insertAdjacentHTML('beforeend', typingHtml);
-  body.scrollTop = body.scrollHeight;
-
+// ===== QUICK WIDGET =====
+async function loadQuickWidget(){
   try {
-    var resp = await fetch('/admin/api/ai', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({message: msg, history: aiHistory.slice(-8)})
-    });
-    var data = await resp.json();
-    var typingEl = document.getElementById(typingId);
-    if(typingEl) typingEl.remove();
+    // Dashboard ma'lumotlaridan foydalanamiz
+    var d = await api('/admin/api/dashboard');
+    
+    // Live status
+    document.getElementById('qw-pending').textContent = d.pending || 0;
+    document.getElementById('qw-onway').textContent = d.delivering || 0;
+    document.getElementById('qw-free-c').textContent = d.free_couriers || 0;
+    document.getElementById('qw-busy-c').textContent = d.busy_couriers || 0;
+    document.getElementById('qw-open-shops').textContent = (d.shops_open || 0) + '/' + (d.shops || 0);
 
-    if(data.reply){
-      appendAiMsg('bot', data.reply);
-      aiHistory.push({role:'assistant', content: data.reply});
-    } else {
-      appendAiMsg('bot', '\u274C Xatolik: ' + (data.error||'Noma\u02BClum xato'));
-    }
+    // Kartalar
+    document.getElementById('qw-today-orders').textContent = d.today_orders || 0;
+    document.getElementById('qw-today-income').textContent = fmtMoney(d.today_income || 0);
+    document.getElementById('qw-delivered').textContent = d.today_delivered || 0;
+    document.getElementById('qw-cancel').textContent = 'Bekor: ' + (d.today_cancelled || 0);
+    document.getElementById('qw-week-income').textContent = fmtShort(d.week_income || 0);
+    document.getElementById('qw-week-orders').textContent = (d.week_orders || 0) + ' buyurtma';
+    document.getElementById('qw-new-users').textContent = d.week_new_users || 0;
+    document.getElementById('qw-total-users').textContent = 'Jami: ' + (d.total_users || 0);
+
+    // Vaqt
+    var now = new Date();
+    document.getElementById('qw-update-time').textContent = 
+      now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
   } catch(e) {
-    var typingEl2 = document.getElementById(typingId);
-    if(typingEl2) typingEl2.remove();
-    appendAiMsg('bot', '\u274C Server bilan aloqa yo\u02BCq. Qayta urinib ko\u02BCring.');
+    console.error('Quick widget xato:', e);
   }
-
-  sendBtn.disabled = false;
-  inp.focus();
 }
 
-function appendAiMsg(role, text){
-  var body = document.getElementById('ai-chat-body');
-  var t = new Date();
-  var time = t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0');
-  var avatarCls = role==='bot' ? 'bot' : 'usr';
-  var avatarIcon = role==='bot' ? '🤖' : '👤';
-  var formatted = text.split(String.fromCharCode(10)).join('<br>');
-  formatted = formatted.split('**').reduce(function(acc,part,i){return acc+(i%2===0?part:'<strong>'+part+'</strong>');}, '');
-  var html = '<div class="ai-msg '+role+'">'
-    +'<div class="ai-msg-avatar '+avatarCls+'">'+avatarIcon+'</div>'
-    +'<div>'
-    +'<div class="ai-msg-bubble">'+formatted+'</div>'
-    +'<div class="ai-msg-time">'+time+'</div>'
-    +'</div></div>';
-  body.insertAdjacentHTML('beforeend', html);
-  body.scrollTop = body.scrollHeight;
+function fmtMoney(n){
+  if(n >= 1000000) return (n/1000000).toFixed(1) + ' mln so'm';
+  if(n >= 1000) return (n/1000).toFixed(0) + ' ming so'm';
+  return n.toLocaleString() + ' so'm';
 }
+function fmtShort(n){
+  if(n >= 1000000) return (n/1000000).toFixed(1) + ' mln';
+  if(n >= 1000) return (n/1000).toFixed(0) + 'K';
+  return n.toString();
+}
+
+// Har 60 soniyada yangilansin
+setInterval(loadQuickWidget, 60000);
 
 // ===== LOGOUT ANIMATION =====
 function doLogout(e){
@@ -2502,6 +2398,7 @@ function doLogout(e){
 
 // INITIAL LOAD
 loadDashboard();
+loadQuickWidget();
 </script>
 </body>
 </html>'''
@@ -3039,19 +2936,13 @@ def api_admin_orders():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ===================== AI CHAT ROUTE (YAXSHILANGAN) =====================
-# Bu kodni admin_panel__9_.py dagi mavjud api_ai_chat() funksiyasiga ALMASHTIRING
-# Qidiring: "# ===================== AI CHAT ROUTE ====================="
-# Va quyidagi butun funksiyani shu kod bilan almashtiring
-
+# ===================== AI CHAT ROUTE =====================
 @app.route('/admin/api/ai', methods=['POST'])
 @login_required
 def api_ai_chat():
     try:
+        import urllib.request
         import json as _json
-        import re as _re
-        import http.client
-        import ssl
 
         data = request.json
         user_msg = data.get('message', '').strip()
@@ -3064,25 +2955,23 @@ def api_ai_chat():
         if not GROQ_API_KEY:
             return jsonify({'error': "GROQ_API_KEY sozlanmagan. Railway → Variables ga qo'shing: GROQ_API_KEY=gsk_xxxx"}), 500
 
-        # --- DB dan KENG kontekst yig'ish ---
+        # --- DB dan real kontekst yig'ish ---
         ctx_lines = []
         try:
             conn = get_db()
             c = conn.cursor()
-            today = datetime.now().strftime("%Y-%m-%d")
-            today_uz = datetime.now().strftime("%d.%m.%Y")
-            week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
-            month_ago = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            today = datetime.now().strftime("%d.%m.%Y")
 
-            # ===== 1. MIJOZ / BUYURTMA ID QIDIRISH =====
-            numbers = _re.findall(r'\b\d{4,}\b', user_msg)
+            # --- Xabardan ID/telefon raqamlarini aniqlash ---
+            import re as _re
+            numbers = _re.findall(r'\b\d{5,}\b', user_msg)
+
+            # Mijoz ID yoki tg_id bo'yicha qidirish
             for num in numbers:
                 num_int = int(num)
-
-                # Mijoz qidirish (tg_id yoki id bo'yicha)
+                # User qidirish
                 c.execute("""SELECT u.*, COUNT(o.id) as order_count,
-                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent,
-                                    COALESCE(SUM(CASE WHEN o.status='cancelled' THEN 1 ELSE 0 END),0) as cancelled_count
+                                    COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
                              FROM users u LEFT JOIN orders o ON u.tg_id=o.user_tg_id
                              WHERE u.tg_id=%s OR u.id=%s
                              GROUP BY u.id,u.tg_id,u.username,u.full_name,u.phone,u.registered_at,u.is_blocked""",
@@ -3097,38 +2986,33 @@ def api_ai_chat():
                     ctx_lines.append(f"  Ro'yxatdan: {user['registered_at']}")
                     ctx_lines.append(f"  Bloklangan: {'Ha' if user['is_blocked'] else 'Yo`q'}")
                     ctx_lines.append(f"  Jami buyurtmalar: {user['order_count']}")
-                    ctx_lines.append(f"  Bekor qilingan: {user['cancelled_count']}")
                     ctx_lines.append(f"  Jami sarflagan: {float(user['total_spent']):,.0f} so'm")
 
-                    c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at, o.address,
-                                        o.payment_method
+                    # Shu mijozning so'nggi buyurtmalari
+                    c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at, o.address
                                  FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
-                                 WHERE o.user_tg_id=%s ORDER BY o.id DESC LIMIT 10""", (user['tg_id'],))
+                                 WHERE o.user_tg_id=%s ORDER BY o.id DESC LIMIT 5""", (user['tg_id'],))
                     uorders = c.fetchall()
                     if uorders:
-                        ctx_lines.append(f"  So'nggi 10 buyurtmasi:")
+                        ctx_lines.append(f"  So'nggi buyurtmalari:")
                         for uo in uorders:
                             ctx_lines.append(f"    #{uo['id']} | {uo['shop']} | {float(uo['total_sum']):,.0f} so'm | {uo['status']} | {uo['created_at']}")
 
-                # Buyurtma ID bo'yicha qidirish
-                c.execute("""SELECT o.*, s.name as shop_name, u.full_name, u.phone, u.tg_id as u_tg_id, u.username,
-                                    c.full_name as courier_name, c.phone as courier_phone
+                # Order ID bo'yicha qidirish
+                c.execute("""SELECT o.*, s.name as shop_name, u.full_name, u.phone, u.tg_id as u_tg_id
                              FROM orders o
                              LEFT JOIN shops s ON o.shop_id=s.id
                              LEFT JOIN users u ON u.tg_id=o.user_tg_id
-                             LEFT JOIN couriers c ON c.id=o.courier_id
                              WHERE o.id=%s""", (num_int,))
                 order = c.fetchone()
                 if order and not user:
                     ctx_lines.append(f"=== BUYURTMA #{num} ===")
                     ctx_lines.append(f"  Do'kon: {order['shop_name']}")
-                    ctx_lines.append(f"  Mijoz: {order['full_name'] or 'Nomsiz'} | Tel: {order['phone']} | TG: {order['u_tg_id']}")
+                    ctx_lines.append(f"  Mijoz: {order['full_name'] or 'Nomsiz'} ({order['phone']})")
                     ctx_lines.append(f"  Summa: {float(order['total_sum']):,.0f} so'm")
                     ctx_lines.append(f"  Holat: {order['status']}")
                     ctx_lines.append(f"  Manzil: {order['address']}")
                     ctx_lines.append(f"  Vaqt: {order['created_at']}")
-                    if order.get('courier_name'):
-                        ctx_lines.append(f"  Kuryer: {order['courier_name']} | Tel: {order['courier_phone']}")
 
             # Telefon raqam bo'yicha qidirish
             phones = _re.findall(r'\b(?:\+998|998|0)?\d{9}\b', user_msg)
@@ -3143,193 +3027,74 @@ def api_ai_chat():
                 if pu:
                     ctx_lines.append(f"=== TELEFON {phone} BO'YICHA MIJOZ ===")
                     ctx_lines.append(f"  Ism: {pu['full_name']}, TG: {pu['tg_id']}, Buyurtmalar: {pu['order_count']}")
-                    ctx_lines.append(f"  Jami sarflagan: {float(pu['total_spent']):,.0f} so'm")
-                    ctx_lines.append(f"  Bloklangan: {'Ha' if pu['is_blocked'] else 'Yo`q'}")
 
-            # ===== 2. UMUMIY STATISTIKA =====
-            ctx_lines.append("\n=== UMUMIY STATISTIKA ===")
-
-            # Mijozlar
+            # --- Umumiy statistika ---
             c.execute("SELECT COUNT(*) as n FROM users")
             ctx_lines.append(f"Jami mijozlar: {c.fetchone()['n']}")
+
             c.execute("SELECT COUNT(*) as n FROM users WHERE is_blocked=true")
             ctx_lines.append(f"Bloklangan mijozlar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (today,))
-            ctx_lines.append(f"Bugun yangi mijozlar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (week_ago,))
-            ctx_lines.append(f"Oxirgi 7 kunda yangi mijozlar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (month_ago,))
-            ctx_lines.append(f"Oxirgi 30 kunda yangi mijozlar: {c.fetchone()['n']}")
 
-            # Buyurtmalar soni
-            try:
-                c.execute("SELECT COUNT(*) as n FROM orders")
-                ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
-                for st, label in [('pending','Kutilayotgan'), ('confirmed','Tasdiqlangan'),
-                                   ('delivering',"Yo'lda"), ('delivered','Yetkazilgan'), ('cancelled','Bekor qilingan')]:
-                    c.execute("SELECT COUNT(*) as n FROM orders WHERE status=%s", (st,))
-                    ctx_lines.append(f"{label} ({st}): {c.fetchone()['n']}")
-            except Exception as e:
-                ctx_lines.append(f"[Buyurtmalar statistika xato: {e}]")
-
-            # Daromad - created_at format avtomatik aniqlanadi
-            try:
-                c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
-                ctx_lines.append(f"Jami daromad: {float(c.fetchone()['t']):,.0f} so'm")
-
-                c.execute("SELECT created_at FROM orders LIMIT 1")
-                sample = c.fetchone()
-                if sample:
-                    ca_val = sample['created_at']
-                    if hasattr(ca_val, 'date'):
-                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at::date=%s::date", (today,))
-                        ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
-                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s::date", (week_ago,))
-                        ctx_lines.append(f"Haftalik daromad: {float(c.fetchone()['t']):,.0f} so'm")
-                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s::date", (month_ago,))
-                        ctx_lines.append(f"Oylik daromad: {float(c.fetchone()['t']):,.0f} so'm")
-                        c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at::date=%s::date", (today,))
-                        ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
-                        c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered' AND created_at>=%s::date", (week_ago,))
-                        ctx_lines.append(f"Haftalik yetkazilgan: {c.fetchone()['n']}")
-                    else:
-                        c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today_uz}%",))
-                        ctx_lines.append(f"Bugungi daromad: {float(c.fetchone()['t']):,.0f} so'm")
-                        c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today_uz}%",))
-                        ctx_lines.append(f"Bugungi buyurtmalar: {c.fetchone()['n']}")
-            except Exception as e:
-                ctx_lines.append(f"[Daromad xato: {e}]")
-
-            # ===== 3. DO'KONLAR =====
-            ctx_lines.append("\n=== DO'KONLAR ===")
-            c.execute("""SELECT s.id, s.name, s.is_open, COALESCE(s.rating,0) as rating,
-                                COUNT(o.id) as total_orders,
-                                COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as income
-                         FROM shops s LEFT JOIN orders o ON o.shop_id=s.id
-                         GROUP BY s.id, s.name, s.is_open, s.rating
-                         ORDER BY s.id""")
+            c.execute("SELECT id, name, is_open, COALESCE(rating,0) as rating FROM shops ORDER BY id")
             shops = c.fetchall()
             ctx_lines.append(f"Do'konlar soni: {len(shops)}")
             for s in shops:
-                holat = "Ochiq ✅" if s['is_open'] else "Yopiq ❌"
-                ctx_lines.append(f"  #{s['id']} {s['name']} | {holat} | Reyting: {float(s['rating']):.1f} | Buyurtmalar: {s['total_orders']} | Daromad: {float(s['income']):,.0f} so'm")
+                holat = "Ochiq" if s['is_open'] else "Yopiq"
+                ctx_lines.append(f"  - #{s['id']} {s['name']} | {holat} | Reyting: {float(s['rating']):.1f}")
 
-            # ===== 4. KURYERLAR =====
-            ctx_lines.append("\n=== KURYERLAR ===")
             c.execute("SELECT COUNT(*) as n FROM couriers")
             ctx_lines.append(f"Jami kuryerlar: {c.fetchone()['n']}")
+
             c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_busy=false AND is_blocked=false")
             ctx_lines.append(f"Bo'sh kuryerlar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_busy=true")
-            ctx_lines.append(f"Band kuryerlar: {c.fetchone()['n']}")
-            c.execute("SELECT COUNT(*) as n FROM couriers WHERE is_blocked=true")
-            ctx_lines.append(f"Bloklangan kuryerlar: {c.fetchone()['n']}")
 
-            c.execute("""SELECT c.id, c.full_name, c.phone, c.is_busy, c.is_blocked,
-                                COUNT(o.id) as delivered_count,
-                                COALESCE(SUM(o.delivery_fee),0) as total_fee
-                         FROM couriers c LEFT JOIN orders o ON o.courier_id=c.id AND o.status='delivered'
-                         GROUP BY c.id, c.full_name, c.phone, c.is_busy, c.is_blocked
-                         ORDER BY delivered_count DESC LIMIT 10""")
-            couriers = c.fetchall()
-            if couriers:
-                ctx_lines.append("Top 10 kuryer:")
-                for cur in couriers:
-                    status = "Band" if cur['is_busy'] else ("Bloklangan" if cur['is_blocked'] else "Bo'sh")
-                    ctx_lines.append(f"  #{cur['id']} {cur['full_name']} | Tel: {cur['phone']} | {status} | Yetkazgan: {cur['delivered_count']} | Pul: {float(cur['total_fee']):,.0f} so'm")
+            c.execute("SELECT COUNT(*) as n FROM orders")
+            ctx_lines.append(f"Jami buyurtmalar: {c.fetchone()['n']}")
 
-            # ===== 5. TOP MIJOZLAR =====
-            ctx_lines.append("\n=== TOP 10 MIJOZ (xarid bo'yicha) ===")
-            c.execute("""SELECT u.full_name, u.phone, u.tg_id,
-                                COUNT(o.id) as order_count,
-                                COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total_sum ELSE 0 END),0) as total_spent
-                         FROM users u JOIN orders o ON u.tg_id=o.user_tg_id
-                         WHERE o.status='delivered'
-                         GROUP BY u.id, u.full_name, u.phone, u.tg_id
-                         ORDER BY total_spent DESC LIMIT 10""")
-            top_users = c.fetchall()
-            for i, tu in enumerate(top_users, 1):
-                ctx_lines.append(f"  {i}. {tu['full_name']} | Tel: {tu['phone']} | TG: {tu['tg_id']} | Buyurtmalar: {tu['order_count']} | Jami: {float(tu['total_spent']):,.0f} so'm")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='pending'")
+            ctx_lines.append(f"Kutilayotgan buyurtmalar: {c.fetchone()['n']}")
 
-            # ===== 6. MUAMMOLI BUYURTMALAR =====
-            ctx_lines.append("\n=== MUAMMOLI BUYURTMALAR (so'nggi 20) ===")
-            c.execute("""SELECT o.id, s.name as shop, u.full_name, u.phone, o.total_sum, o.status, o.created_at, o.address
-                         FROM orders o
-                         LEFT JOIN shops s ON o.shop_id=s.id
-                         LEFT JOIN users u ON u.tg_id=o.user_tg_id
-                         WHERE o.status IN ('cancelled','problem','disputed')
-                         ORDER BY o.id DESC LIMIT 20""")
-            problems = c.fetchall()
-            ctx_lines.append(f"Muammoli buyurtmalar soni: {len(problems)}")
-            for p in problems:
-                ctx_lines.append(f"  #{p['id']} | {p['shop']} | {p['full_name']} ({p['phone']}) | {float(p['total_sum']):,.0f} so'm | {p['status']} | {p['created_at']}")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivering'")
+            ctx_lines.append(f"Yo'ldagi buyurtmalar: {c.fetchone()['n']}")
 
-            # ===== 7. OXIRGI BUYURTMALAR =====
-            ctx_lines.append("\n=== OXIRGI 20 BUYURTMA ===")
-            c.execute("""SELECT o.id, s.name as shop, u.full_name, o.total_sum, o.status, o.created_at
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered'")
+            ctx_lines.append(f"Yetkazilgan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='cancelled'")
+            ctx_lines.append(f"Bekor qilingan buyurtmalar: {c.fetchone()['n']}")
+
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered'")
+            total_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Jami daromad: {total_income:,.0f} so'm")
+
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at LIKE %s", (f"{today}%",))
+            today_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Bugungi daromad: {today_income:,.0f} so'm")
+
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE created_at LIKE %s", (f"{today}%",))
+            ctx_lines.append(f"Bugungi buyurtmalar soni: {c.fetchone()['n']}")
+
+            # Oxirgi 5 ta buyurtma
+            c.execute("""SELECT o.id, s.name as shop, o.total_sum, o.status, o.created_at
                          FROM orders o LEFT JOIN shops s ON o.shop_id=s.id
-                         LEFT JOIN users u ON u.tg_id=o.user_tg_id
-                         ORDER BY o.id DESC LIMIT 20""")
+                         ORDER BY o.id DESC LIMIT 5""")
             recent = c.fetchall()
-            for r in recent:
-                ctx_lines.append(f"  #{r['id']} | {r['shop']} | {r['full_name'] or 'Nomsiz'} | {float(r['total_sum']):,.0f} so'm | {r['status']} | {r['created_at']}")
+            if recent:
+                ctx_lines.append("Oxirgi 5 ta buyurtma:")
+                for r in recent:
+                    ctx_lines.append(f"  #{r['id']} | {r['shop']} | {float(r['total_sum']):,.0f} so'm | {r['status']} | {r['created_at']}")
 
-            # ===== 8. PROMO KODLAR =====
-            ctx_lines.append("\n=== PROMO KODLAR ===")
-            try:
-                c.execute("""SELECT code, discount_percent, discount_amount, usage_count, max_usage, is_active, expires_at
-                             FROM promo_codes ORDER BY id DESC LIMIT 20""")
-                promos = c.fetchall()
-                ctx_lines.append(f"Promo kodlar soni: {len(promos)}")
-                for pr in promos:
-                    aktiv = "Aktiv" if pr['is_active'] else "Nofaol"
-                    if pr.get('discount_percent'):
-                        chegirma = f"{pr['discount_percent']}%"
-                    else:
-                        chegirma = f"{float(pr.get('discount_amount',0)):,.0f} so'm"
-                    ctx_lines.append(f"  {pr['code']} | {chegirma} | {aktiv} | Foydalanilgan: {pr['usage_count']}/{pr.get('max_usage','∞')} | Tugash: {pr.get('expires_at','Yo`q')}")
-            except:
-                ctx_lines.append("  Promo kodlar jadvali topilmadi")
+            # Haftalik
+            week_ago = (datetime.now() - timedelta(days=7)).strftime("%d.%m.%Y")
+            c.execute("SELECT COUNT(*) as n FROM users WHERE registered_at>=%s", (week_ago,))
+            ctx_lines.append(f"Oxirgi 7 kunda yangi mijozlar: {c.fetchone()['n']}")
 
-            # ===== 9. CHATLAR / XABARLAR =====
-            ctx_lines.append("\n=== OXIRGI CHATLAR / XABARLAR ===")
-            try:
-                c.execute("""SELECT m.id, u.full_name, u.phone, m.message, m.created_at, m.is_read
-                             FROM messages m LEFT JOIN users u ON u.tg_id=m.user_tg_id
-                             ORDER BY m.id DESC LIMIT 15""")
-                msgs = c.fetchall()
-                ctx_lines.append(f"So'nggi 15 xabar:")
-                for msg in msgs:
-                    read_s = "✓" if msg['is_read'] else "●yangi"
-                    ctx_lines.append(f"  #{msg['id']} | {msg['full_name']} ({msg['phone']}) | {msg['message'][:80]} | {read_s} | {msg['created_at']}")
-            except:
-                ctx_lines.append("  Xabarlar jadvali topilmadi")
+            c.execute("SELECT COUNT(*) as n FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
+            ctx_lines.append(f"Oxirgi 7 kunda yetkazilgan buyurtmalar: {c.fetchone()['n']}")
 
-            # ===== 10. HAFTALIK HISOBOT =====
-            ctx_lines.append("\n=== HAFTALIK HISOBOT (oxirgi 7 kun) ===")
-            try:
-                c.execute("""SELECT DATE(created_at) as day, COUNT(*) as orders,
-                                    COALESCE(SUM(CASE WHEN status='delivered' THEN total_sum ELSE 0 END),0) as income,
-                                    COALESCE(SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END),0) as cancelled
-                             FROM orders
-                             WHERE created_at>=%s
-                             GROUP BY DATE(created_at)
-                             ORDER BY day DESC""", (week_ago,))
-                weekly = c.fetchall()
-                for w in weekly:
-                    ctx_lines.append(f"  {w['day']}: {w['orders']} buyurtma | Daromad: {float(w['income']):,.0f} so'm | Bekor: {w['cancelled']}")
-            except Exception as we:
-                # DATE() PostgreSQL da ishlashi uchun
-                try:
-                    c.execute("""SELECT TO_CHAR(created_at::date,'DD.MM.YYYY') as day, COUNT(*) as orders,
-                                        COALESCE(SUM(CASE WHEN status='delivered' THEN total_sum ELSE 0 END),0) as income
-                                 FROM orders WHERE created_at>=%s
-                                 GROUP BY created_at::date ORDER BY created_at::date DESC""", (week_ago,))
-                    weekly = c.fetchall()
-                    for w in weekly:
-                        ctx_lines.append(f"  {w['day']}: {w['orders']} buyurtma | Daromad: {float(w['income']):,.0f} so'm")
-                except:
-                    ctx_lines.append("  Haftalik hisobot olishda xato")
+            c.execute("SELECT COALESCE(SUM(total_sum),0) as t FROM orders WHERE status='delivered' AND created_at>=%s", (week_ago,))
+            week_income = float(c.fetchone()['t'])
+            ctx_lines.append(f"Oxirgi 7 kunda daromad: {week_income:,.0f} so'm")
 
             conn.close()
         except Exception as db_err:
@@ -3338,25 +3103,23 @@ def api_ai_chat():
         db_context = "\n".join(ctx_lines)
         now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-        system_prompt = f"""Sen Olimbek SAVDO admin panelining professional AI assistentisan. Hozirgi vaqt: {now_str}.
+        system_prompt = f"""Sen Olimbek SAVDO admin panelining AI assistentisan. Hozirgi vaqt: {now_str}.
 
-Quyida REAL DATABASE ma'lumotlari berilgan:
+Quyida REAL DATABASE ma'lumotlari berilgan — faqat shu ma'lumotlarga asoslanib javob ber:
 
 {db_context}
 
 Qoidalar:
 - Faqat yuqoridagi real ma'lumotlarga asoslanib javob ber
-- O'zbek tilida javob ber
-- Aniq, foydali va tuzilgan javob ber
-- Raqamlarni chiroyli formatlash: 1,500,000 so'm
-- Agar ma'lumot bazada yo'q bo'lsa: "Bu ma'lumot bazada mavjud emas" de
-- Mijoz, buyurtma, kuryer, do'kon, moliya, promo kod, chat, muammoli buyurtmalar, haftalik hisobot haqida savollarga javob bera olasan
-- Taqqoslash va tahlil qila olasan (masalan: qaysi do'kon ko'p daromad qilgan, qaysi kuryer ko'p yetkazgan)
-- Javobni markdown formatida ber (sarlavhalar uchun ** ishlatma, faqat oddiy matn)"""
+- Uzbek tilida javob ber
+- Qisqa, aniq va foydali javob ber
+- Raqamlarni chiroyli formatlash (1,500,000 so'm)
+- Agar so'ralgan ma'lumot bazada yo'q bo'lsa, "Bu ma'lumot bazada mavjud emas" de
+- Javobni qisqa va aniq qilib ber"""
 
-        # Messages tuzish — oxirgi 12 ta xabar saqlanadi (avvalgi 6 edi)
+        # Messages tuzish
         messages = []
-        for h in history[-12:]:
+        for h in history[-6:]:
             if h.get('role') in ('user', 'assistant') and h.get('content'):
                 messages.append({'role': h['role'], 'content': h['content']})
         if not messages or messages[-1]['role'] != 'user':
@@ -3364,16 +3127,20 @@ Qoidalar:
         elif messages[-1]['content'] != user_msg:
             messages.append({'role': 'user', 'content': user_msg})
 
+        import http.client
+        import ssl
+
         payload_str = _json.dumps({
             'model': 'llama-3.3-70b-versatile',
-            'max_tokens': 2048,  # 1024 dan 2048 ga oshirildi
+            'max_tokens': 1024,
             'messages': [{'role': 'system', 'content': system_prompt}] + messages
         })
 
         clean_key = GROQ_API_KEY.strip()
-        ctx_ssl = ssl.create_default_context()
-        conn_http = http.client.HTTPSConnection('api.groq.com', context=ctx_ssl, timeout=30)
-        conn_http.request(
+
+        ctx = ssl.create_default_context()
+        conn = http.client.HTTPSConnection('api.groq.com', context=ctx, timeout=30)
+        conn.request(
             'POST',
             '/openai/v1/chat/completions',
             body=payload_str.encode('utf-8'),
@@ -3382,9 +3149,9 @@ Qoidalar:
                 'Authorization': 'Bearer ' + clean_key
             }
         )
-        resp = conn_http.getresponse()
+        resp = conn.getresponse()
         resp_body = resp.read().decode('utf-8')
-        conn_http.close()
+        conn.close()
 
         if resp.status != 200:
             return jsonify({'error': f'Groq xato {resp.status}: {resp_body[:300]}'}), 500
@@ -3396,6 +3163,7 @@ Qoidalar:
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'trace': traceback.format_exc()[-500:]}), 500
+
 
 # ===================== RUN (standalone) =====================
 if __name__ == '__main__':

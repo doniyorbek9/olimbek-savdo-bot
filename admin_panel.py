@@ -298,499 +298,412 @@ LOGIN_HTML = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kirish — Olimbek SAVDO Admin</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<title>Kirish — Olimbek SAVDO</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;}
 body{
+  font-family:'Inter',sans-serif;
+  background:#04080f;
   min-height:100vh;
-  background:#080c18;
-  font-family:'DM Sans',sans-serif;
   display:flex;
+  align-items:stretch;
   overflow:hidden;
 }
 
-/* Animated background */
-.bg-animated{
-  position:fixed;inset:0;z-index:0;
-  background:
-    radial-gradient(ellipse 80% 60% at 20% 40%, rgba(0,212,170,0.12) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 50% at 80% 60%, rgba(14,165,233,0.10) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 40% at 60% 20%, rgba(139,92,246,0.08) 0%, transparent 50%);
-  animation: bgmove 8s ease-in-out infinite alternate;
-}
-@keyframes bgmove{
-  0%{background-position:0% 0%;}
-  100%{background-position:100% 100%;}
-}
-
-/* Grid overlay */
-.grid-overlay{
-  position:fixed;inset:0;z-index:0;
-  background-image:
-    linear-gradient(rgba(0,212,170,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,170,0.04) 1px, transparent 1px);
-  background-size:60px 60px;
-}
-
-/* Left branding panel */
-.left-panel{
+/* ---- LEFT VISUAL SIDE ---- */
+.visual{
   flex:1;
+  position:relative;
   display:flex;
   flex-direction:column;
-  justify-content:center;
-  padding:80px;
+  justify-content:flex-end;
+  padding:56px 60px;
+  overflow:hidden;
+}
+
+/* Deep space background */
+.visual-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 90% 70% at 10% 80%, rgba(0,212,170,0.18) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 70% 20%, rgba(99,102,241,0.15) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 60% at 90% 90%, rgba(14,165,233,0.12) 0%, transparent 50%),
+    linear-gradient(160deg, #04080f 0%, #070d1a 50%, #050b16 100%);
+}
+
+/* Mesh grid */
+.visual-grid{
+  position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(0,212,170,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,212,170,0.05) 1px, transparent 1px);
+  background-size:72px 72px;
+  mask-image:radial-gradient(ellipse 80% 80% at 30% 60%, black 30%, transparent 80%);
+}
+
+/* Floating orbs */
+.orb{position:absolute;border-radius:50%;filter:blur(60px);}
+.orb-1{width:400px;height:400px;background:rgba(0,212,170,0.12);top:-80px;left:-80px;}
+.orb-2{width:300px;height:300px;background:rgba(99,102,241,0.1);bottom:100px;right:200px;}
+.orb-3{width:200px;height:200px;background:rgba(14,165,233,0.1);top:200px;right:100px;}
+
+/* Logo top-left */
+.v-logo{
+  position:absolute;top:40px;left:56px;
+  display:flex;align-items:center;gap:12px;
+  z-index:2;
+}
+.v-logo-icon{
+  width:42px;height:42px;border-radius:12px;
+  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;
+  box-shadow:0 4px 20px rgba(0,212,170,0.4);
+}
+.v-logo-name{font-size:15px;font-weight:700;color:#e2e8f0;letter-spacing:0.3px;}
+.v-logo-sub{font-size:11px;color:#334155;margin-top:1px;}
+
+/* Big heading */
+.v-content{position:relative;z-index:2;}
+.v-tag{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(0,212,170,0.08);
+  border:1px solid rgba(0,212,170,0.2);
+  padding:5px 14px;border-radius:30px;
+  font-size:11px;font-weight:600;color:#00d4aa;
+  letter-spacing:1.2px;text-transform:uppercase;
+  margin-bottom:28px;
+}
+.v-tag-dot{width:5px;height:5px;background:#00d4aa;border-radius:50%;}
+
+.v-heading{
+  font-size:72px;font-weight:900;
+  line-height:0.95;letter-spacing:-2px;
+  margin-bottom:24px;
+}
+.v-heading .line1{color:#f8fafc;}
+.v-heading .line2{
+  background:linear-gradient(90deg,#00d4aa,#0ea5e9,#6366f1);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+
+.v-desc{
+  font-size:15px;color:#475569;font-weight:400;
+  line-height:1.65;max-width:400px;margin-bottom:44px;
+}
+
+/* Feature list */
+.v-features{display:flex;flex-direction:column;gap:12px;}
+.v-feat{
+  display:flex;align-items:center;gap:12px;
+  font-size:13px;color:#64748b;
+}
+.v-feat-icon{
+  width:32px;height:32px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;flex-shrink:0;
+}
+
+/* Bottom decorative cards */
+.v-cards{
+  position:absolute;right:60px;top:50%;transform:translateY(-50%);
+  display:flex;flex-direction:column;gap:12px;
+  z-index:2;
+}
+.v-card{
+  background:rgba(13,21,37,0.8);
+  border:1px solid rgba(255,255,255,0.07);
+  border-radius:14px;padding:14px 18px;
+  backdrop-filter:blur(12px);
+  min-width:170px;
+}
+.v-card-lbl{font-size:10px;color:#475569;font-weight:500;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.8px;}
+.v-card-val{font-size:22px;font-weight:800;margin-bottom:3px;}
+.v-card-trend{font-size:10px;font-weight:600;}
+
+/* ---- RIGHT LOGIN SIDE ---- */
+.login-side{
+  width:460px;
+  min-height:100vh;
+  background:rgba(8,14,26,0.95);
+  border-left:1px solid rgba(255,255,255,0.05);
+  display:flex;align-items:center;justify-content:center;
+  padding:48px 44px;
   position:relative;
-  z-index:1;
+  flex-shrink:0;
 }
-.brand-badge{
-  display:inline-flex;align-items:center;gap:8px;
-  background:rgba(0,212,170,0.1);border:1px solid rgba(0,212,170,0.25);
-  padding:6px 14px;border-radius:20px;
-  font-size:12px;color:#00d4aa;font-weight:600;letter-spacing:1px;
-  margin-bottom:32px;width:fit-content;
-}
-.brand-dot{width:6px;height:6px;background:#00d4aa;border-radius:50%;animation:pulse2 2s infinite;}
-@keyframes pulse2{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.5;transform:scale(0.8);}}
 
-.brand-title{
-  font-family:'Syne',sans-serif;
-  font-size:64px;font-weight:800;
-  line-height:1.05;
+/* subtle top gradient line */
+.login-side::before{
+  content:'';
+  position:absolute;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,#00d4aa,#0ea5e9,transparent);
+}
+
+.login-box{width:100%;}
+
+/* Header */
+.l-header{margin-bottom:36px;}
+.l-step{
+  font-size:10px;font-weight:700;color:#334155;
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;
+}
+.l-title{
+  font-size:30px;font-weight:800;color:#f8fafc;
+  letter-spacing:-0.5px;margin-bottom:8px;line-height:1.15;
+}
+.l-sub{font-size:13px;color:#475569;line-height:1.5;}
+
+/* Error */
+.l-error{
+  background:rgba(239,68,68,0.07);
+  border:1px solid rgba(239,68,68,0.2);
+  border-radius:10px;padding:11px 14px;
   margin-bottom:20px;
-}
-.brand-title span.green{color:#00d4aa;}
-.brand-title span.white{color:#e2e8f0;}
-
-.brand-desc{
-  font-size:17px;color:#64748b;font-weight:300;
-  line-height:1.7;max-width:420px;margin-bottom:48px;
+  font-size:12px;color:#f87171;
+  display:flex;align-items:center;gap:8px;
 }
 
-.stats-row{display:flex;gap:24px;flex-wrap:wrap;}
-.stat-pill{
-  background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.08);
-  border-radius:12px;padding:14px 20px;
+/* Fields */
+.l-field{margin-bottom:18px;}
+.l-label{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;font-weight:600;color:#475569;
+  letter-spacing:0.4px;text-transform:uppercase;margin-bottom:8px;
 }
-.stat-pill .num{font-family:'Syne',sans-serif;font-size:24px;font-weight:700;color:#e2e8f0;}
-.stat-pill .lbl{font-size:11px;color:#475569;margin-top:2px;}
-
-/* Right login panel */
-.right-panel{
-  width:480px;min-height:100vh;
-  display:flex;align-items:center;justify-content:center;
-  background:rgba(17,24,39,0.85);
-  backdrop-filter:blur(20px);
-  border-left:1px solid rgba(255,255,255,0.06);
-  position:relative;z-index:1;
-  padding:40px;
+.l-input-wrap{position:relative;}
+.l-input-icon{
+  position:absolute;left:15px;top:50%;transform:translateY(-50%);
+  font-size:15px;color:#334155;pointer-events:none;
 }
-
-.login-box{width:100%;max-width:380px;}
-
-.login-header{margin-bottom:40px;}
-.login-icon{
-  width:56px;height:56px;
-  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
-  border-radius:16px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:26px;margin-bottom:24px;
-  box-shadow:0 8px 32px rgba(0,212,170,0.3);
-}
-.login-title{
-  font-family:'Syne',sans-serif;
-  font-size:28px;font-weight:800;color:#f1f5f9;
-  margin-bottom:8px;
-}
-.login-sub{font-size:14px;color:#64748b;}
-
-.error-box{
-  background:rgba(239,68,68,0.1);
-  border:1px solid rgba(239,68,68,0.25);
-  border-radius:10px;padding:12px 16px;
-  margin-bottom:20px;
-  display:flex;align-items:center;gap:10px;
-  font-size:13px;color:#f87171;
-}
-
-.field{margin-bottom:20px;}
-.field label{
-  display:block;font-size:12px;font-weight:600;
-  color:#64748b;letter-spacing:0.5px;text-transform:uppercase;
-  margin-bottom:8px;
-}
-.field-wrap{position:relative;}
-.field-icon{
-  position:absolute;left:14px;top:50%;transform:translateY(-50%);
-  font-size:16px;pointer-events:none;
-}
-.field-icon-right{
-  position:absolute;right:14px;top:50%;transform:translateY(-50%);
-  font-size:16px;cursor:pointer;user-select:none;
-  opacity:0.6;transition:opacity 0.2s;
-}
-.field-icon-right:hover{opacity:1;}
-.field input{
+.l-input{
   width:100%;
-  background:rgba(255,255,255,0.05);
-  border:1px solid rgba(255,255,255,0.1);
-  border-radius:12px;
-  padding:14px 44px 14px 44px;
-  color:#e2e8f0;font-size:14px;
-  outline:none;
-  font-family:'DM Sans',sans-serif;
-  transition:all 0.2s;
-}
-.field input:focus{
-  border-color:#00d4aa;
-  background:rgba(0,212,170,0.05);
-  box-shadow:0 0 0 3px rgba(0,212,170,0.1);
-}
-.field input::placeholder{color:#334155;}
-
-.submit-btn{
-  width:100%;padding:15px;
-  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
-  border:none;border-radius:12px;
-  font-size:15px;font-weight:700;
-  color:#000;cursor:pointer;
-  font-family:'Syne',sans-serif;letter-spacing:0.5px;
-  transition:all 0.2s;
-  margin-top:8px;
-  position:relative;overflow:hidden;
-}
-.submit-btn:hover{
-  transform:translateY(-1px);
-  box-shadow:0 8px 24px rgba(0,212,170,0.4);
-}
-.submit-btn:active{transform:translateY(0);}
-
-.login-footer{
-  margin-top:32px;padding-top:24px;
-  border-top:1px solid rgba(255,255,255,0.06);
-  display:flex;align-items:center;justify-content:center;gap:8px;
-  font-size:12px;color:#334155;
-}
-.login-footer span{color:#00d4aa;}
-
-/* Floating cards decoration */
-.float-card{
-  position:absolute;
-  background:rgba(17,24,39,0.8);
+  background:rgba(255,255,255,0.03);
   border:1px solid rgba(255,255,255,0.08);
-  border-radius:14px;padding:16px 20px;
-  backdrop-filter:blur(10px);
+  border-radius:12px;
+  padding:14px 14px 14px 46px;
+  font-size:14px;color:#e2e8f0;
+  outline:none;
+  font-family:'Inter',sans-serif;
+  transition:border-color 0.2s, background 0.2s, box-shadow 0.2s;
 }
-.float-card-1{bottom:120px;left:80px;animation:float1 6s ease-in-out infinite;}
-.float-card-2{top:140px;right:520px;animation:float2 7s ease-in-out infinite;}
-@keyframes float1{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
-@keyframes float2{0%,100%{transform:translateY(-8px);}50%{transform:translateY(4px);}}
+.l-input::placeholder{color:#1e3050;}
+.l-input:focus{
+  border-color:#00d4aa;
+  background:rgba(0,212,170,0.04);
+  box-shadow:0 0 0 4px rgba(0,212,170,0.08);
+}
 
-.fc-label{font-size:10px;color:#475569;margin-bottom:6px;font-weight:500;}
-.fc-value{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;color:#00d4aa;}
-.fc-sub{font-size:10px;color:#22c55e;margin-top:2px;}
+/* Submit */
+.l-submit{
+  width:100%;
+  padding:15px;
+  margin-top:6px;
+  border:none;border-radius:12px;
+  font-size:14px;font-weight:700;
+  color:#020d0a;cursor:pointer;
+  font-family:'Inter',sans-serif;
+  letter-spacing:0.2px;
+  background:linear-gradient(135deg,#00d4aa 0%,#0aebb8 50%,#00d4aa 100%);
+  background-size:200% 200%;
+  position:relative;overflow:hidden;
+  box-shadow:0 4px 24px rgba(0,212,170,0.25);
+  transition:box-shadow 0.2s, transform 0.15s;
+}
+.l-submit:hover{
+  box-shadow:0 6px 32px rgba(0,212,170,0.4);
+  transform:translateY(-1px);
+}
+.l-submit:active{transform:translateY(0);}
+.l-submit-inner{display:flex;align-items:center;justify-content:center;gap:8px;}
+
+/* Divider */
+.l-divider{
+  display:flex;align-items:center;gap:12px;
+  margin:22px 0;
+}
+.l-divider-line{flex:1;height:1px;background:rgba(255,255,255,0.05);}
+.l-divider-text{font-size:11px;color:#1e3050;}
+
+/* Info row */
+.l-info{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+}
+.l-info-item{
+  background:rgba(255,255,255,0.02);
+  border:1px solid rgba(255,255,255,0.05);
+  border-radius:10px;padding:12px;
+  text-align:center;
+}
+.l-info-val{font-size:16px;font-weight:800;color:#e2e8f0;margin-bottom:2px;}
+.l-info-lbl{font-size:10px;color:#334155;}
+
+/* Footer */
+.l-footer{
+  margin-top:28px;
+  padding-top:20px;
+  border-top:1px solid rgba(255,255,255,0.04);
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:11px;color:#1e3050;
+}
+.l-footer a{color:#00d4aa;text-decoration:none;font-weight:500;}
 
 @media(max-width:900px){
-  .left-panel{display:none;}
-  .right-panel{width:100%;border-left:none;}
-}
-
-/* ===== LOGIN LOADING OVERLAY ===== */
-.login-loader{
-  position:fixed;inset:0;z-index:9999;
-  display:none;
-  align-items:center;justify-content:center;
-  flex-direction:column;
-  background:#080c18;
-}
-.login-loader.show{display:flex;}
-
-/* Particles canvas */
-#loader-canvas{position:absolute;inset:0;width:100%;height:100%;}
-
-.loader-content{
-  position:relative;z-index:2;
-  display:flex;flex-direction:column;align-items:center;gap:28px;
-}
-
-/* Hexagon spinner */
-.hex-spinner{
-  width:90px;height:90px;position:relative;
-}
-.hex-spinner svg{
-  width:100%;height:100%;
-  animation:hexspin 2.4s linear infinite;
-}
-@keyframes hexspin{to{transform:rotate(360deg);}}
-
-/* Orbiting dot */
-.hex-spinner::after{
-  content:'';
-  position:absolute;
-  width:10px;height:10px;
-  background:#00d4aa;
-  border-radius:50%;
-  top:50%;left:50%;
-  margin:-5px 0 0 -5px;
-  box-shadow:0 0 14px 4px rgba(0,212,170,0.7);
-  animation:orbit 1.2s linear infinite;
-}
-@keyframes orbit{
-  0%{transform:translate(38px,0) rotate(0deg);}
-  100%{transform:translate(38px,0) rotate(360deg);
-       /* trick: rotate around center using transform-origin */}
-}
-/* Better orbit */
-.orbit-wrap{
-  position:absolute;inset:0;
-  animation:orbitwrap 1.2s linear infinite;
-}
-@keyframes orbitwrap{to{transform:rotate(360deg);}}
-.orbit-dot{
-  position:absolute;
-  width:10px;height:10px;
-  background:#00d4aa;
-  border-radius:50%;
-  top:50%;left:100%;
-  margin-top:-5px;margin-left:-5px;
-  box-shadow:0 0 14px 4px rgba(0,212,170,0.6);
-}
-
-.loader-brand{
-  font-family:'Syne',sans-serif;
-  font-size:30px;font-weight:800;
-  background:linear-gradient(135deg,#00d4aa,#0ea5e9);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  letter-spacing:-0.5px;
-}
-.loader-msg{
-  font-size:13px;color:#475569;
-  letter-spacing:1.5px;text-transform:uppercase;
-  font-weight:500;
-  animation:fadepulse 1.5s ease-in-out infinite;
-}
-@keyframes fadepulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
-
-/* Progress bar */
-.loader-progress{
-  width:220px;height:2px;
-  background:rgba(255,255,255,0.06);
-  border-radius:2px;overflow:hidden;
-}
-.loader-progress-fill{
-  height:100%;width:0%;
-  background:linear-gradient(90deg,#00d4aa,#0ea5e9);
-  border-radius:2px;
-  transition:width 0.1s linear;
-  box-shadow:0 0 8px rgba(0,212,170,0.6);
-}
-
-/* Grid overlay on loader */
-.loader-grid{
-  position:absolute;inset:0;z-index:1;
-  background-image:
-    linear-gradient(rgba(0,212,170,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,212,170,0.03) 1px, transparent 1px);
-  background-size:60px 60px;
-  animation:gridmove 4s linear infinite;
-}
-@keyframes gridmove{
-  0%{background-position:0 0;}
-  100%{background-position:60px 60px;}
+  .visual{display:none;}
+  .login-side{width:100%;border-left:none;}
+  .login-side::before{background:linear-gradient(90deg,#00d4aa,#0ea5e9);}
 }
 </style>
 </head>
 <body>
-<div class="bg-animated"></div>
-<div class="grid-overlay"></div>
 
-<!-- LOGIN LOADING OVERLAY -->
-<div class="login-loader" id="login-loader">
-  <div class="loader-grid"></div>
-  <div class="loader-content">
-    <div class="hex-spinner">
-      <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5"
-          stroke="rgba(0,212,170,0.15)" stroke-width="2" fill="none"/>
-        <polygon points="50,5 93,27.5 93,72.5 50,95 7,72.5 7,27.5"
-          stroke="url(#hexgrad)" stroke-width="2.5" fill="none"
-          stroke-dasharray="260" stroke-dashoffset="0"
-          style="filter:drop-shadow(0 0 6px rgba(0,212,170,0.8))"/>
-        <defs>
-          <linearGradient id="hexgrad" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="#00d4aa"/>
-            <stop offset="50%" stop-color="#0ea5e9"/>
-            <stop offset="100%" stop-color="transparent"/>
-          </linearGradient>
-        </defs>
-      </svg>
-      <div class="orbit-wrap">
-        <div class="orbit-dot"></div>
+<!-- LEFT VISUAL -->
+<div class="visual">
+  <div class="visual-bg"></div>
+  <div class="visual-grid"></div>
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <div class="v-logo">
+    <div class="v-logo-icon">🛒</div>
+    <div>
+      <div class="v-logo-name">Olimbek SAVDO</div>
+      <div class="v-logo-sub">Boshqaruv tizimi</div>
+    </div>
+  </div>
+
+  <div class="v-content">
+    <div class="v-tag"><span class="v-tag-dot"></span>Admin Panel 2.0</div>
+    <div class="v-heading">
+      <div class="line1">Biznesingizni</div>
+      <div class="line2">nazorat qiling</div>
+    </div>
+    <p class="v-desc">
+      Buyurtmalar, kuryerlar va do&#x2019;konlarni real vaqtda kuzating. Barcha ma&#x2019;lumot bir joyda.
+    </p>
+    <div class="v-features">
+      <div class="v-feat">
+        <div class="v-feat-icon" style="background:rgba(0,212,170,0.1);">📦</div>
+        <span>Buyurtmalarni real vaqtda kuzatish</span>
+      </div>
+      <div class="v-feat">
+        <div class="v-feat-icon" style="background:rgba(14,165,233,0.1);">🚚</div>
+        <span>Kuryer va do&#x2019;konlar boshqaruvi</span>
+      </div>
+      <div class="v-feat">
+        <div class="v-feat-icon" style="background:rgba(245,158,11,0.1);">💰</div>
+        <span>Moliyaviy hisobot va statistika</span>
+      </div>
+      <div class="v-feat">
+        <div class="v-feat-icon" style="background:rgba(139,92,246,0.1);">🎟</div>
+        <span>Promo kodlar va chegirmalar</span>
       </div>
     </div>
-    <div>
-      <div class="loader-brand">Olimbek SAVDO</div>
-    </div>
-    <div class="loader-msg" id="loader-msg">Tekshirilmoqda...</div>
-    <div class="loader-progress">
-      <div class="loader-progress-fill" id="loader-progress-fill"></div>
-    </div>
-  </div>
-</div>
-
-<!-- LEFT BRANDING -->
-<div class="left-panel">
-  <div class="brand-badge">
-    <span class="brand-dot"></span>
-    JONLI TIZIM
   </div>
 
-  <div class="brand-title">
-    <span class="green">Olimbek</span><br>
-    <span class="white">SAVDO</span>
-  </div>
-
-  <p class="brand-desc">
-    Zamonaviy savdo boshqaruv tizimi. Do'konlar, kuryerlar va buyurtmalarni real vaqtda nazorat qiling.
-  </p>
-
-  <div class="stats-row">
-    <div class="stat-pill">
-      <div class="num">24/7</div>
-      <div class="lbl">Ishlash vaqti</div>
+  <!-- Floating stat cards -->
+  <div class="v-cards">
+    <div class="v-card">
+      <div class="v-card-lbl">Bugungi daromad</div>
+      <div class="v-card-val" style="color:#00d4aa;">0 so&#x2019;m</div>
+      <div class="v-card-trend" style="color:#22c55e;">&#x2191; Faol</div>
     </div>
-    <div class="stat-pill">
-      <div class="num">100%</div>
-      <div class="lbl">Ishonchlilik</div>
+    <div class="v-card">
+      <div class="v-card-lbl">Faol buyurtmalar</div>
+      <div class="v-card-val" style="color:#0ea5e9;">0 ta</div>
+      <div class="v-card-trend" style="color:#64748b;">Real vaqt</div>
     </div>
-    <div class="stat-pill">
-      <div class="num">⚡</div>
-      <div class="lbl">Real vaqt</div>
+    <div class="v-card">
+      <div class="v-card-lbl">Bo&#x2019;sh kuryerlar</div>
+      <div class="v-card-val" style="color:#f59e0b;">0 ta</div>
+      <div class="v-card-trend" style="color:#64748b;">Tayyor</div>
     </div>
-  </div>
-
-  <!-- Floating decoration cards -->
-  <div class="float-card float-card-1">
-    <div class="fc-label">Bugungi buyurtmalar</div>
-    <div class="fc-value" id="fc-orders">— ta</div>
-    <div class="fc-sub">↑ Faol</div>
-  </div>
-  <div class="float-card float-card-2">
-    <div class="fc-label">Jonli daromad</div>
-    <div class="fc-value" id="fc-income">— so'm</div>
-    <div class="fc-sub">↑ O'sish</div>
   </div>
 </div>
 
 <!-- RIGHT LOGIN -->
-<div class="right-panel">
+<div class="login-side">
   <div class="login-box">
-    <div class="login-header">
-      <div class="login-icon">🛒</div>
-      <div class="login-title">Xush kelibsiz!</div>
-      <div class="login-sub">Admin paneliga kirish uchun ma'lumotlaringizni kiriting</div>
+
+    <div class="l-header">
+      <div class="l-step">Admin kirish</div>
+      <div class="l-title">Xush kelibsiz! 👋</div>
+      <div class="l-sub">Davom etish uchun hisobingizga kiring</div>
     </div>
 
     {% if error %}
-    <div class="error-box">
-      ❌ {{ error }}
+    <div class="l-error">
+      <span>⚠</span> {{ error }}
     </div>
     {% endif %}
 
     <form method="POST">
-      <div class="field">
-        <label>Username</label>
-        <div class="field-wrap">
-          <span class="field-icon">👤</span>
-          <input type="text" name="username" placeholder="admin" required autofocus autocomplete="username">
+      <div class="l-field">
+        <div class="l-label">Username</div>
+        <div class="l-input-wrap">
+          <span class="l-input-icon">👤</span>
+          <input class="l-input" type="text" name="username" placeholder="adminni kiriting" required autofocus autocomplete="username">
         </div>
       </div>
-      <div class="field">
-        <label>Parol</label>
-        <div class="field-wrap">
-          <span class="field-icon">🔒</span>
-          <input type="password" name="password" id="pass-input" placeholder="••••••••" required autocomplete="current-password">
-          <span class="field-icon-right" id="pass-toggle" onclick="togglePass()" title="Parolni ko'rish">👁️</span>
+
+      <div class="l-field">
+        <div class="l-label">
+          <span>Parol</span>
+        </div>
+        <div class="l-input-wrap">
+          <span class="l-input-icon">🔑</span>
+          <input class="l-input" type="password" name="password" placeholder="&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;" required autocomplete="current-password">
         </div>
       </div>
-      <button type="submit" class="submit-btn">🔐 Kirish</button>
+
+      <button type="submit" class="l-submit">
+        <div class="l-submit-inner">
+          <span>&#x2192;</span> Tizimga kirish
+        </div>
+      </button>
     </form>
 
-    <div class="login-footer">
-      <span>🛡️</span> Olimbek SAVDO &nbsp;·&nbsp; <span>Admin Panel v2.0</span>
+    <div class="l-divider">
+      <div class="l-divider-line"></div>
+      <span class="l-divider-text">tizim ma&#x2019;lumotlari</span>
+      <div class="l-divider-line"></div>
     </div>
+
+    <div class="l-info">
+      <div class="l-info-item">
+        <div class="l-info-val" style="color:#00d4aa;">24/7</div>
+        <div class="l-info-lbl">Ishlash vaqti</div>
+      </div>
+      <div class="l-info-item">
+        <div class="l-info-val" style="color:#0ea5e9;">100%</div>
+        <div class="l-info-lbl">Xavfsizlik</div>
+      </div>
+      <div class="l-info-item">
+        <div class="l-info-val" style="color:#f59e0b;">⚡</div>
+        <div class="l-info-lbl">Tezkor</div>
+      </div>
+      <div class="l-info-item">
+        <div class="l-info-val" style="color:#22c55e;">🔒</div>
+        <div class="l-info-lbl">Himoyalangan</div>
+      </div>
+    </div>
+
+    <div class="l-footer">
+      <span>&#169; 2025 Olimbek SAVDO</span>
+      <span style="color:#334155;">v2.0</span>
+    </div>
+
   </div>
 </div>
 
-<script>
-// Parolni ko'rish/yashirish
-function togglePass(){
-  var inp = document.getElementById('pass-input');
-  var btn = document.getElementById('pass-toggle');
-  if(inp.type === 'password'){
-    inp.type = 'text';
-    btn.textContent = '🙈';
-    btn.title = 'Parolni yashirish';
-  } else {
-    inp.type = 'password';
-    btn.textContent = '👁️';
-    btn.title = "Parolni ko'rish";
-  }
-}
-
-// Jonli statistika
-async function loadStats(){
-  try {
-    const r = await fetch('/admin/api/login-stats');
-    if(!r.ok) return;
-    const d = await r.json();
-    if(d.orders !== undefined) document.getElementById('fc-orders').textContent = d.orders + ' ta';
-    if(d.income !== undefined) document.getElementById('fc-income').textContent = Number(d.income).toLocaleString('uz-UZ') + ' so\u2019m';
-  } catch(e) {}
-}
-loadStats();
-setInterval(loadStats, 30000);
-
-// ===== LOGIN LOADING ANIMATION =====
-const loaderMsgs = [
-  'Tekshirilmoqda...',
-  'Ulanilmoqda...',
-  'Panel yuklanmoqda...',
-  'Xush kelibsiz!'
-];
-
-document.querySelector('form').addEventListener('submit', function(e){
-  const uname = this.querySelector('[name=username]').value.trim();
-  const pass = this.querySelector('[name=password]').value.trim();
-  if(!uname || !pass) return; // html validation handles it
-
-  const loader = document.getElementById('login-loader');
-  const msgEl = document.getElementById('loader-msg');
-  const fill = document.getElementById('loader-progress-fill');
-
-  loader.classList.add('show');
-
-  // Animate progress + messages
-  const steps = [
-    {pct: 20,  msg: 'Tekshirilmoqda...',     delay: 0},
-    {pct: 50,  msg: 'Ulanilmoqda...',         delay: 400},
-    {pct: 80,  msg: 'Panel yuklanmoqda...',   delay: 850},
-    {pct: 100, msg: 'Xush kelibsiz! ✓',       delay: 1300},
-  ];
-
-  steps.forEach(s => {
-    setTimeout(() => {
-      fill.style.width = s.pct + '%';
-      msgEl.textContent = s.msg;
-    }, s.delay);
-  });
-});
-</script>
 </body>
 </html>'''
 
-# ===================== MAIN DASHBOARD =====================
+
 DASHBOARD_HTML = '''<!DOCTYPE html>
 <html lang="uz">
 <head>
